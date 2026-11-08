@@ -30,8 +30,8 @@ function eq(a, b, m) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Er
 
 console.log('== RenderType state-table tests ==');
 
-test('table has 13 render types incl. gui family fallback', () => {
-  eq(Object.keys(RENDER_TYPES).length, 13, 'count');
+test('table has 15 render types incl. gui family + v1.3 lightning/water_mask', () => {
+  eq(Object.keys(RENDER_TYPES).length, 15, 'count');
 });
 
 test('solid: no blend, depth LEQUAL+mask, cull back', () => {

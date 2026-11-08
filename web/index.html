@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>webmc-1165 loader</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1d1d21; color: #eee;
+    font: 14px/1.5 monospace; display: flex; align-items: center; justify-content: center; }
+  #box { text-align: center; }
+  canvas { image-rendering: pixelated; background: #000; }
+  #status { color: #aaa; margin-top: 12px; }
+  .ok { color: #7fdc7f; }
+</style>
+</head>
+<body>
+<div id="box">
+  <canvas id="game" width="854" height="480"></canvas>
+  <div id="status">booting render foundation…</div>
+</div>
+<script>
+/**
+ * webmcReady double-signal loader — the M2 side of the M6 smoke gate.
+ *
+ * The TeaVM-compiled client (M1 output) drops in here via <script src> or
+ * import; M2 exposes the contract below. Two signals, both required by the
+ * M6 gate:
+ *   1. window.__M2_READY  = true            (machine-readable flag)
+ *   2. CustomEvent 'webmcReady' on window  (event-driven listener)
+ */
+(function () {
+  'use strict';
+  var status = document.getElementById('status');
+  var canvas = document.getElementById('game');
+  var gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true });
+
+  if (!gl) {
+    status.textContent = 'FAIL: WebGL2 unavailable — the render foundation cannot start.';
+    status.className = '';
+    return;
+  }
+
+  // --- load the render foundation -----------------------------------------
+  // In the integrated build, GlStateManager.js / Specializer.js /
+  // RenderTypeStates.js are bundled next to this file and the compiled
+  // client mounts on top. This stub only proves the environment + signals.
+  function boot() {
+    status.innerHTML = 'WebGL2 OK (' + gl.getParameter(gl.VERSION) + ')' +
+      '<br>waiting for compiled client (M1)…' +
+      '<br><span class="ok">webmcReady signals armed</span>';
+
+    window.__M2_READY = true;
+    window.dispatchEvent(new CustomEvent('webmcReady', {
+      detail: { webgl2: gl.getParameter(gl.VERSION), canvas: canvas.id },
+    }));
+  }
+
+  if (document.readyState === 'complete') boot();
+  else window.addEventListener('load', boot);
+})();
+</script>
+</body>
+</html>
