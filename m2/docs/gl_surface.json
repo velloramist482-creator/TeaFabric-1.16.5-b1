@@ -1,0 +1,1237 @@
+{
+  "classes_scanned": 5445,
+  "classes_using_gl": 6,
+  "function_classes": {
+    "org/lwjgl/glfw/Callbacks|glfwFreeCallbacks": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWDropCallback|getName": [
+      "dka"
+    ],
+    "org/lwjgl/glfw/GLFWErrorCallback|close": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWErrorCallback|create": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWErrorCallback|free": [
+      "GLX",
+      "deh",
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWImage$Buffer|height": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWImage$Buffer|pixels": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWImage$Buffer|position": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWImage$Buffer|width": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWImage|mallocStack": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFWMonitorCallback|free": [
+      "dev"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|blueBits": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|greenBits": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|height": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|limit": [
+      "der"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|position": [
+      "der"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|redBits": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|refreshRate": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode$Buffer|width": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode|blueBits": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode|greenBits": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode|height": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode|redBits": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode|refreshRate": [
+      "GLX",
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFWVidMode|width": [
+      "dey"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwCreateWindow": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwDefaultWindowHints": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwDestroyWindow": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetClipboardString": [
+      "deh"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetCurrentContext": [
+      "GLX"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetError": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetFramebufferSize": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetKey": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetKeyName": [
+      "deo$b"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetMonitorPos": [
+      "der"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetMonitors": [
+      "dev"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetPrimaryMonitor": [
+      "GLX",
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetTime": [
+      "GLX",
+      "RenderSystem",
+      "ddt"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetVideoMode": [
+      "GLX",
+      "der"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetVideoModes": [
+      "der"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetWindowMonitor": [
+      "GLX",
+      "dev",
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwGetWindowPos": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwInit": [
+      "GLX"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwMakeContextCurrent": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwPollEvents": [
+      "RenderSystem"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetCharModsCallback": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetClipboardString": [
+      "deh"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetCursorEnterCallback": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetCursorPos": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetCursorPosCallback": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetDropCallback": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetErrorCallback": [
+      "GLX",
+      "deh",
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetFramebufferSizeCallback": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetInputMode": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetKeyCallback": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetMonitorCallback": [
+      "dev"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetMouseButtonCallback": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetScrollCallback": [
+      "deo"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetWindowFocusCallback": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetWindowIcon": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetWindowMonitor": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetWindowPosCallback": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetWindowSizeCallback": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSetWindowTitle": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSwapBuffers": [
+      "RenderSystem"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwSwapInterval": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwTerminate": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwWaitEventsTimeout": [
+      "RenderSystem"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwWindowHint": [
+      "dez"
+    ],
+    "org/lwjgl/glfw/GLFW|glfwWindowShouldClose": [
+      "GLX"
+    ],
+    "org/lwjgl/openal/AL10|alBufferData": [
+      "ddz"
+    ],
+    "org/lwjgl/openal/AL10|alDeleteBuffers": [
+      "ddu",
+      "ddz"
+    ],
+    "org/lwjgl/openal/AL10|alDeleteSources": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alEnable": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/AL10|alGenBuffers": [
+      "ddz"
+    ],
+    "org/lwjgl/openal/AL10|alGenSources": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alGetError": [
+      "ddy"
+    ],
+    "org/lwjgl/openal/AL10|alGetSourcei": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alListener3f": [
+      "ddw"
+    ],
+    "org/lwjgl/openal/AL10|alListenerf": [
+      "ddw"
+    ],
+    "org/lwjgl/openal/AL10|alListenerfv": [
+      "ddw"
+    ],
+    "org/lwjgl/openal/AL10|alSourcePause": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourcePlay": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourceQueueBuffers": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourceStop": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourceUnqueueBuffers": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourcef": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourcefv": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/AL10|alSourcei": [
+      "ddu"
+    ],
+    "org/lwjgl/openal/ALC10|alcCloseDevice": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC10|alcCreateContext": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC10|alcDestroyContext": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC10|alcGetError": [
+      "ddy"
+    ],
+    "org/lwjgl/openal/ALC10|alcGetInteger": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC10|alcGetIntegerv": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC10|alcMakeContextCurrent": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC10|alcOpenDevice": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALCCapabilities|OpenALC11": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALCapabilities|AL_EXT_LINEAR_DISTANCE": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALCapabilities|AL_EXT_source_distance_model": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/ALC|createCapabilities": [
+      "ddv"
+    ],
+    "org/lwjgl/openal/AL|createCapabilities": [
+      "ddv"
+    ],
+    "org/lwjgl/opengl/ARBDebugOutput|glDebugMessageCallbackARB": [
+      "del"
+    ],
+    "org/lwjgl/opengl/ARBDebugOutput|glDebugMessageControlARB": [
+      "del"
+    ],
+    "org/lwjgl/opengl/ARBFramebufferObject|glBindFramebuffer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/ARBFramebufferObject|glCheckFramebufferStatus": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/ARBFramebufferObject|glDeleteFramebuffers": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/ARBFramebufferObject|glFramebufferTexture2D": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/ARBFramebufferObject|glGenFramebuffers": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/ARBFramebufferObject|glGetFramebufferAttachmentParameteri": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferBlit|glBlitFramebufferEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferObject|glBindFramebufferEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferObject|glCheckFramebufferStatusEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferObject|glDeleteFramebuffersEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferObject|glFramebufferTexture2DEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferObject|glGenFramebuffersEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/EXTFramebufferObject|glGetFramebufferAttachmentParameteriEXT": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glAlphaFunc": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glBindTexture": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glBlendFunc": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glClear": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glClearColor": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glClearDepth": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glClearStencil": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glColor4f": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glColorMask": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glColorMaterial": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glColorPointer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glDeleteTextures": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glDepthFunc": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glDepthMask": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glDisable": [
+      "dem$c"
+    ],
+    "org/lwjgl/opengl/GL11|glDisableClientState": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glDrawArrays": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glEnable": [
+      "del",
+      "dem$c"
+    ],
+    "org/lwjgl/opengl/GL11|glEnableClientState": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glFogf": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glFogfv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glFogi": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGenTextures": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGetError": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGetFloatv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGetInteger": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGetString": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGetTexImage": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glGetTexLevelParameteri": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glLightModelfv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glLightfv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glLineWidth": [
+      "GLX",
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glLoadIdentity": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glLogicOp": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glMatrixMode": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glMultMatrixf": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glNormal3f": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glNormalPointer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glOrtho": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPixelStorei": [
+      "dem",
+      "dex"
+    ],
+    "org/lwjgl/opengl/GL11|glPixelTransferf": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPolygonMode": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPolygonOffset": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPopAttrib": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPopMatrix": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPushAttrib": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glPushMatrix": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glReadPixels": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glRotatef": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glScaled": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glScalef": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glShadeModel": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glStencilFunc": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glStencilMask": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glStencilOp": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTexCoordPointer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTexEnvi": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTexGenfv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTexGeni": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTexImage2D": [
+      "dem",
+      "dex"
+    ],
+    "org/lwjgl/opengl/GL11|glTexParameterf": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTexParameteri": [
+      "dem",
+      "dex"
+    ],
+    "org/lwjgl/opengl/GL11|glTexSubImage2D": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTranslated": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glTranslatef": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glVertexPointer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL11|glViewport": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL13|glActiveTexture": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL13|glClientActiveTexture": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL13|glMultiTexCoord2f": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL14|glBlendColor": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL14|glBlendEquation": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL14|glBlendFuncSeparate": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL15|glBindBuffer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL15|glBufferData": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL15|glDeleteBuffers": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL15|glGenBuffers": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glAttachShader": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glCompileShader": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glCopyTexSubImage2D": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glCreateProgram": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glCreateShader": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glDeleteProgram": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glDeleteShader": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glEnableVertexAttribArray": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glGetAttribLocation": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glGetProgramInfoLog": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glGetProgrami": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glGetShaderInfoLog": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glGetShaderi": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glGetUniformLocation": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glLinkProgram": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glScissor": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glShaderSource": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform1fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform1i": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform1iv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform2fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform2iv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform3fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform3iv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform4fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniform4iv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniformMatrix2fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniformMatrix3fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUniformMatrix4fv": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glUseProgram": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL20|glVertexAttribPointer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glBindFramebuffer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glBlitFramebuffer": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glCheckFramebufferStatus": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glDeleteFramebuffers": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glFramebufferTexture2D": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glGenFramebuffers": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GL30|glGetFramebufferAttachmentParameteri": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|GL_ARB_debug_output": [
+      "del"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|GL_ARB_framebuffer_object": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|GL_EXT_framebuffer_blit": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|GL_EXT_framebuffer_object": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|GL_KHR_debug": [
+      "del"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|GL_NV_fog_distance": [
+      "GLX"
+    ],
+    "org/lwjgl/opengl/GLCapabilities|OpenGL30": [
+      "dem"
+    ],
+    "org/lwjgl/opengl/GLDebugMessageARBCallback|create": [
+      "del"
+    ],
+    "org/lwjgl/opengl/GLDebugMessageCallback|create": [
+      "del"
+    ],
+    "org/lwjgl/opengl/GLDebugMessageCallback|getMessage": [
+      "del"
+    ],
+    "org/lwjgl/opengl/GL|createCapabilities": [
+      "dez"
+    ],
+    "org/lwjgl/opengl/GL|getCapabilities": [
+      "GLX",
+      "del"
+    ],
+    "org/lwjgl/opengl/KHRDebug|glDebugMessageCallback": [
+      "del"
+    ],
+    "org/lwjgl/opengl/KHRDebug|glDebugMessageControl": [
+      "del"
+    ],
+    "org/lwjgl/stb/STBIEOFCallback|close": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIEOFCallback|create": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIIOCallbacks|eof": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIIOCallbacks|mallocStack": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIIOCallbacks|read": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIIOCallbacks|skip": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIReadCallback|close": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBIReadCallback|create": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBISkipCallback|close": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBISkipCallback|create": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBImageResize|nstbir_resize_uint8": [
+      "det"
+    ],
+    "org/lwjgl/stb/STBImageWrite|nstbi_write_png_to_func": [
+      "det"
+    ],
+    "org/lwjgl/stb/STBImage|nstbi_image_free": [
+      "det"
+    ],
+    "org/lwjgl/stb/STBImage|stbi_failure_reason": [
+      "det",
+      "deu",
+      "dez"
+    ],
+    "org/lwjgl/stb/STBImage|stbi_image_free": [
+      "dez"
+    ],
+    "org/lwjgl/stb/STBImage|stbi_info_from_callbacks": [
+      "deu"
+    ],
+    "org/lwjgl/stb/STBImage|stbi_load_from_memory": [
+      "det",
+      "dez"
+    ],
+    "org/lwjgl/stb/STBTTFontinfo|address": [
+      "det"
+    ],
+    "org/lwjgl/stb/STBTTFontinfo|free": [
+      "ded",
+      "dnj"
+    ],
+    "org/lwjgl/stb/STBTTFontinfo|malloc": [
+      "dnj"
+    ],
+    "org/lwjgl/stb/STBTruetype|nstbtt_MakeGlyphBitmapSubpixel": [
+      "det"
+    ],
+    "org/lwjgl/stb/STBTruetype|stbtt_FindGlyphIndex": [
+      "ded"
+    ],
+    "org/lwjgl/stb/STBTruetype|stbtt_GetFontVMetrics": [
+      "ded"
+    ],
+    "org/lwjgl/stb/STBTruetype|stbtt_GetGlyphBitmapBoxSubpixel": [
+      "ded"
+    ],
+    "org/lwjgl/stb/STBTruetype|stbtt_GetGlyphHMetrics": [
+      "ded"
+    ],
+    "org/lwjgl/stb/STBTruetype|stbtt_InitFont": [
+      "dnj"
+    ],
+    "org/lwjgl/stb/STBTruetype|stbtt_ScaleForPixelHeight": [
+      "ded"
+    ],
+    "org/lwjgl/stb/STBVorbisInfo|channels": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbisInfo|mallocStack": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbisInfo|sample_rate": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbis|stb_vorbis_close": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbis|stb_vorbis_decode_frame_pushdata": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbis|stb_vorbis_get_error": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbis|stb_vorbis_get_info": [
+      "ddx"
+    ],
+    "org/lwjgl/stb/STBVorbis|stb_vorbis_open_pushdata": [
+      "ddx"
+    ]
+  },
+  "jar": "client-1.16.5.jar",
+  "surface": {
+    "org/lwjgl/glfw/Callbacks": {
+      "glfwFreeCallbacks": 1
+    },
+    "org/lwjgl/glfw/GLFW": {
+      "glfwCreateWindow": 1,
+      "glfwDefaultWindowHints": 1,
+      "glfwDestroyWindow": 1,
+      "glfwGetClipboardString": 1,
+      "glfwGetCurrentContext": 1,
+      "glfwGetError": 1,
+      "glfwGetFramebufferSize": 1,
+      "glfwGetKey": 1,
+      "glfwGetKeyName": 1,
+      "glfwGetMonitorPos": 1,
+      "glfwGetMonitors": 1,
+      "glfwGetPrimaryMonitor": 2,
+      "glfwGetTime": 3,
+      "glfwGetVideoMode": 2,
+      "glfwGetVideoModes": 1,
+      "glfwGetWindowMonitor": 3,
+      "glfwGetWindowPos": 1,
+      "glfwInit": 1,
+      "glfwMakeContextCurrent": 1,
+      "glfwPollEvents": 1,
+      "glfwSetCharModsCallback": 1,
+      "glfwSetClipboardString": 1,
+      "glfwSetCursorEnterCallback": 1,
+      "glfwSetCursorPos": 1,
+      "glfwSetCursorPosCallback": 1,
+      "glfwSetDropCallback": 1,
+      "glfwSetErrorCallback": 3,
+      "glfwSetFramebufferSizeCallback": 1,
+      "glfwSetInputMode": 1,
+      "glfwSetKeyCallback": 1,
+      "glfwSetMonitorCallback": 1,
+      "glfwSetMouseButtonCallback": 1,
+      "glfwSetScrollCallback": 1,
+      "glfwSetWindowFocusCallback": 1,
+      "glfwSetWindowIcon": 1,
+      "glfwSetWindowMonitor": 1,
+      "glfwSetWindowPosCallback": 1,
+      "glfwSetWindowSizeCallback": 1,
+      "glfwSetWindowTitle": 1,
+      "glfwSwapBuffers": 1,
+      "glfwSwapInterval": 1,
+      "glfwTerminate": 1,
+      "glfwWaitEventsTimeout": 1,
+      "glfwWindowHint": 1,
+      "glfwWindowShouldClose": 1
+    },
+    "org/lwjgl/glfw/GLFWDropCallback": {
+      "getName": 1
+    },
+    "org/lwjgl/glfw/GLFWErrorCallback": {
+      "close": 1,
+      "create": 1,
+      "free": 3
+    },
+    "org/lwjgl/glfw/GLFWImage": {
+      "mallocStack": 1
+    },
+    "org/lwjgl/glfw/GLFWImage$Buffer": {
+      "height": 1,
+      "pixels": 1,
+      "position": 1,
+      "width": 1
+    },
+    "org/lwjgl/glfw/GLFWMonitorCallback": {
+      "free": 1
+    },
+    "org/lwjgl/glfw/GLFWVidMode": {
+      "blueBits": 1,
+      "greenBits": 1,
+      "height": 1,
+      "redBits": 1,
+      "refreshRate": 2,
+      "width": 1
+    },
+    "org/lwjgl/glfw/GLFWVidMode$Buffer": {
+      "blueBits": 1,
+      "greenBits": 1,
+      "height": 1,
+      "limit": 1,
+      "position": 1,
+      "redBits": 1,
+      "refreshRate": 1,
+      "width": 1
+    },
+    "org/lwjgl/openal/AL": {
+      "createCapabilities": 1
+    },
+    "org/lwjgl/openal/AL10": {
+      "alBufferData": 1,
+      "alDeleteBuffers": 2,
+      "alDeleteSources": 1,
+      "alEnable": 1,
+      "alGenBuffers": 1,
+      "alGenSources": 1,
+      "alGetError": 1,
+      "alGetSourcei": 1,
+      "alListener3f": 1,
+      "alListenerf": 1,
+      "alListenerfv": 1,
+      "alSourcePause": 1,
+      "alSourcePlay": 1,
+      "alSourceQueueBuffers": 1,
+      "alSourceStop": 1,
+      "alSourceUnqueueBuffers": 1,
+      "alSourcef": 1,
+      "alSourcefv": 1,
+      "alSourcei": 1
+    },
+    "org/lwjgl/openal/ALC": {
+      "createCapabilities": 1
+    },
+    "org/lwjgl/openal/ALC10": {
+      "alcCloseDevice": 1,
+      "alcCreateContext": 1,
+      "alcDestroyContext": 1,
+      "alcGetError": 1,
+      "alcGetInteger": 1,
+      "alcGetIntegerv": 1,
+      "alcMakeContextCurrent": 1,
+      "alcOpenDevice": 1
+    },
+    "org/lwjgl/openal/ALCCapabilities": {
+      "OpenALC11": 1
+    },
+    "org/lwjgl/openal/ALCapabilities": {
+      "AL_EXT_LINEAR_DISTANCE": 1,
+      "AL_EXT_source_distance_model": 1
+    },
+    "org/lwjgl/opengl/ARBDebugOutput": {
+      "glDebugMessageCallbackARB": 1,
+      "glDebugMessageControlARB": 1
+    },
+    "org/lwjgl/opengl/ARBFramebufferObject": {
+      "glBindFramebuffer": 1,
+      "glCheckFramebufferStatus": 1,
+      "glDeleteFramebuffers": 1,
+      "glFramebufferTexture2D": 1,
+      "glGenFramebuffers": 1,
+      "glGetFramebufferAttachmentParameteri": 1
+    },
+    "org/lwjgl/opengl/EXTFramebufferBlit": {
+      "glBlitFramebufferEXT": 1
+    },
+    "org/lwjgl/opengl/EXTFramebufferObject": {
+      "glBindFramebufferEXT": 1,
+      "glCheckFramebufferStatusEXT": 1,
+      "glDeleteFramebuffersEXT": 1,
+      "glFramebufferTexture2DEXT": 1,
+      "glGenFramebuffersEXT": 1,
+      "glGetFramebufferAttachmentParameteriEXT": 1
+    },
+    "org/lwjgl/opengl/GL": {
+      "createCapabilities": 1,
+      "getCapabilities": 2
+    },
+    "org/lwjgl/opengl/GL11": {
+      "glAlphaFunc": 1,
+      "glBindTexture": 1,
+      "glBlendFunc": 1,
+      "glClear": 1,
+      "glClearColor": 1,
+      "glClearDepth": 1,
+      "glClearStencil": 1,
+      "glColor4f": 1,
+      "glColorMask": 1,
+      "glColorMaterial": 1,
+      "glColorPointer": 1,
+      "glDeleteTextures": 2,
+      "glDepthFunc": 1,
+      "glDepthMask": 1,
+      "glDisable": 1,
+      "glDisableClientState": 1,
+      "glDrawArrays": 1,
+      "glEnable": 2,
+      "glEnableClientState": 1,
+      "glFogf": 1,
+      "glFogfv": 1,
+      "glFogi": 1,
+      "glGenTextures": 2,
+      "glGetError": 1,
+      "glGetFloatv": 1,
+      "glGetInteger": 1,
+      "glGetString": 1,
+      "glGetTexImage": 1,
+      "glGetTexLevelParameteri": 1,
+      "glLightModelfv": 1,
+      "glLightfv": 1,
+      "glLineWidth": 2,
+      "glLoadIdentity": 1,
+      "glLogicOp": 1,
+      "glMatrixMode": 1,
+      "glMultMatrixf": 1,
+      "glNormal3f": 1,
+      "glNormalPointer": 1,
+      "glOrtho": 1,
+      "glPixelStorei": 2,
+      "glPixelTransferf": 1,
+      "glPolygonMode": 1,
+      "glPolygonOffset": 1,
+      "glPopAttrib": 1,
+      "glPopMatrix": 1,
+      "glPushAttrib": 1,
+      "glPushMatrix": 1,
+      "glReadPixels": 1,
+      "glRotatef": 1,
+      "glScaled": 1,
+      "glScalef": 1,
+      "glShadeModel": 1,
+      "glStencilFunc": 1,
+      "glStencilMask": 1,
+      "glStencilOp": 1,
+      "glTexCoordPointer": 1,
+      "glTexEnvi": 1,
+      "glTexGenfv": 1,
+      "glTexGeni": 1,
+      "glTexImage2D": 2,
+      "glTexParameterf": 1,
+      "glTexParameteri": 2,
+      "glTexSubImage2D": 1,
+      "glTranslated": 1,
+      "glTranslatef": 1,
+      "glVertexPointer": 1,
+      "glViewport": 1
+    },
+    "org/lwjgl/opengl/GL13": {
+      "glActiveTexture": 1,
+      "glClientActiveTexture": 1,
+      "glMultiTexCoord2f": 1
+    },
+    "org/lwjgl/opengl/GL14": {
+      "glBlendColor": 1,
+      "glBlendEquation": 1,
+      "glBlendFuncSeparate": 1
+    },
+    "org/lwjgl/opengl/GL15": {
+      "glBindBuffer": 1,
+      "glBufferData": 1,
+      "glDeleteBuffers": 1,
+      "glGenBuffers": 1
+    },
+    "org/lwjgl/opengl/GL20": {
+      "glAttachShader": 1,
+      "glCompileShader": 1,
+      "glCopyTexSubImage2D": 1,
+      "glCreateProgram": 1,
+      "glCreateShader": 1,
+      "glDeleteProgram": 1,
+      "glDeleteShader": 1,
+      "glEnableVertexAttribArray": 1,
+      "glGetAttribLocation": 1,
+      "glGetProgramInfoLog": 1,
+      "glGetProgrami": 1,
+      "glGetShaderInfoLog": 1,
+      "glGetShaderi": 1,
+      "glGetUniformLocation": 1,
+      "glLinkProgram": 1,
+      "glScissor": 1,
+      "glShaderSource": 1,
+      "glUniform1fv": 1,
+      "glUniform1i": 1,
+      "glUniform1iv": 1,
+      "glUniform2fv": 1,
+      "glUniform2iv": 1,
+      "glUniform3fv": 1,
+      "glUniform3iv": 1,
+      "glUniform4fv": 1,
+      "glUniform4iv": 1,
+      "glUniformMatrix2fv": 1,
+      "glUniformMatrix3fv": 1,
+      "glUniformMatrix4fv": 1,
+      "glUseProgram": 1,
+      "glVertexAttribPointer": 1
+    },
+    "org/lwjgl/opengl/GL30": {
+      "glBindFramebuffer": 1,
+      "glBlitFramebuffer": 1,
+      "glCheckFramebufferStatus": 1,
+      "glDeleteFramebuffers": 1,
+      "glFramebufferTexture2D": 1,
+      "glGenFramebuffers": 1,
+      "glGetFramebufferAttachmentParameteri": 1
+    },
+    "org/lwjgl/opengl/GLCapabilities": {
+      "GL_ARB_debug_output": 1,
+      "GL_ARB_framebuffer_object": 1,
+      "GL_EXT_framebuffer_blit": 1,
+      "GL_EXT_framebuffer_object": 1,
+      "GL_KHR_debug": 1,
+      "GL_NV_fog_distance": 1,
+      "OpenGL30": 1
+    },
+    "org/lwjgl/opengl/GLDebugMessageARBCallback": {
+      "create": 1
+    },
+    "org/lwjgl/opengl/GLDebugMessageCallback": {
+      "create": 1,
+      "getMessage": 1
+    },
+    "org/lwjgl/opengl/KHRDebug": {
+      "glDebugMessageCallback": 1,
+      "glDebugMessageControl": 1
+    },
+    "org/lwjgl/stb/STBIEOFCallback": {
+      "close": 1,
+      "create": 1
+    },
+    "org/lwjgl/stb/STBIIOCallbacks": {
+      "eof": 1,
+      "mallocStack": 1,
+      "read": 1,
+      "skip": 1
+    },
+    "org/lwjgl/stb/STBIReadCallback": {
+      "close": 1,
+      "create": 1
+    },
+    "org/lwjgl/stb/STBISkipCallback": {
+      "close": 1,
+      "create": 1
+    },
+    "org/lwjgl/stb/STBImage": {
+      "nstbi_image_free": 1,
+      "stbi_failure_reason": 3,
+      "stbi_image_free": 1,
+      "stbi_info_from_callbacks": 1,
+      "stbi_load_from_memory": 2
+    },
+    "org/lwjgl/stb/STBImageResize": {
+      "nstbir_resize_uint8": 1
+    },
+    "org/lwjgl/stb/STBImageWrite": {
+      "nstbi_write_png_to_func": 1
+    },
+    "org/lwjgl/stb/STBTTFontinfo": {
+      "address": 1,
+      "free": 2,
+      "malloc": 1
+    },
+    "org/lwjgl/stb/STBTruetype": {
+      "nstbtt_MakeGlyphBitmapSubpixel": 1,
+      "stbtt_FindGlyphIndex": 1,
+      "stbtt_GetFontVMetrics": 1,
+      "stbtt_GetGlyphBitmapBoxSubpixel": 1,
+      "stbtt_GetGlyphHMetrics": 1,
+      "stbtt_InitFont": 1,
+      "stbtt_ScaleForPixelHeight": 1
+    },
+    "org/lwjgl/stb/STBVorbis": {
+      "stb_vorbis_close": 1,
+      "stb_vorbis_decode_frame_pushdata": 1,
+      "stb_vorbis_get_error": 1,
+      "stb_vorbis_get_info": 1,
+      "stb_vorbis_open_pushdata": 1
+    },
+    "org/lwjgl/stb/STBVorbisInfo": {
+      "channels": 1,
+      "mallocStack": 1,
+      "sample_rate": 1
+    }
+  }
+}

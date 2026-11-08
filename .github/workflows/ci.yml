@@ -16,12 +16,14 @@ jobs:
           node-version: 20
       - name: Convert shaders (GLSL 1.50 -> ES 3.00)
         run: node tools/convert_core_shaders.js --in samples --out build/shaders --shims tools/inline_shims
-      - name: Unit gates
+      - name: Unit gates (v1.3)
         run: |
           node test/test_glstatemanager.js
           node test/test_converter.js
           node test/test_rendertype.js
           node test/test_gui_shaders.js
+          node test/test_specializer.js
+          node test/test_completeness.js
           node test/bench_dedup.js
       - name: Red-line self-check (zero MC jar/epk assets in m2 tree)
         run: |

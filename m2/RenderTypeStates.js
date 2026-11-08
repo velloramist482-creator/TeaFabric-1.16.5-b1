@@ -26,6 +26,10 @@ const RENDER_TYPES = {
   rendertype_eyes:         { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: true },  cull: OFF, colorMask: [true, true, true, true] },
   rendertype_weather:      { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: true },  cull: OFF, colorMask: [true, true, true, true] },
   rendertype_armor_glint:  { blend: B(GL_CONST.SRC_COLOR, GL_CONST.ONE, GL_CONST.ZERO, GL_CONST.ONE), depth: { func: GL_CONST.LEQUAL, mask: true }, cull: OFF, colorMask: [true, true, true, true] },
+  // v1.3: lightning bolts — additive-ish glow (SRC_ALPHA, ONE), never writes depth
+  rendertype_lightning:    { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE), depth: { func: GL_CONST.LEQUAL, mask: false }, cull: OFF, colorMask: [true, true, true, true] },
+  // v1.3: water mask — depth-only write, no color output (swim-through occlusion)
+  rendertype_water_mask:   { blend: OFF, depth: { func: GL_CONST.LEQUAL, mask: true },  cull: OFF, colorMask: [false, false, false, false] },
   // GUI layer (1.16.5 draws GUIs without depth)
   gui:                     { blend: OFF, depth: { func: GL_CONST.LEQUAL, mask: false },  cull: OFF, colorMask: [true, true, true, true] },
   // GUI overlays (1.16.5: hovering tooltips, spectator widgets, boss bars drawn
