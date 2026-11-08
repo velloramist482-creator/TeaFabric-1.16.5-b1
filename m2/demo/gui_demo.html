@@ -1,0 +1,399 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TeaFabric M2 v1.1 — GUI Bring-up Demo</title>
+<style>
+  html,body{margin:0;background:#0d0d10;color:#9aa;font-family:monospace}
+  #wrap{display:flex;gap:12px;padding:12px}
+  canvas{image-rendering:pixelated;border:2px solid #2a2a33;background:#000}
+  #info{font-size:12px;line-height:1.5;white-space:pre}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="960" height="600"></canvas>
+  <div id="info">booting…</div>
+</div>
+<!--__GSM__-->
+<!--__RT__-->
+<script>
+(function(){
+'use strict';
+// ---------------- converter OUTPUT (ES 3.00) embedded verbatim ----------------
+const PROGRAMS = /*__PROGRAMS__*/{};
+
+// ---------------- constants ----------------
+const gl = document.getElementById('cv').getContext('webgl2', {antialias:false});
+const G = window.GlStateManager, M4 = window.Matrix4f, C = window.GL_CONST;
+const gsm = new G(gl);
+const LW = 480, LH = 300; // logical GUI pixels (MC GUI scale 2 => canvas 960x600)
+const info = document.getElementById('info');
+
+if (!gl) { info.textContent = 'FATAL: no webgl2'; document.title='TF-GUI-DONE';
+  window.__GUI_RESULT = {fatal:'no webgl2'}; return; }
+
+// ---------------- program setup ----------------
+const progs = {};
+for (const [name, p] of Object.entries(PROGRAMS)) {
+  progs[name] = { prog: gsm.createProgram(p.vs, p.fs), attrs: p.attrs, uniforms: {} };
+}
+const U = (name, uni) => { gsm.uniformLocation(progs[name].prog, uni); progs[name].uniforms[uni] = gsm.uniformLocation(uni); };
+// NOTE: uniformLocation(name) queries for the CURRENT program (MC bind-then-query)
+function bindUniforms(name, list) {
+  gsm.useProgram(progs[name].prog);
+  for (const uni of list) progs[name].uniforms[uni] = gsm.uniformLocation(uni);
+}
+
+// ---------------- textures (procedural, zero MC assets) ----------------
+function texFromData(w, h, fill, wrap) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  const data = new Uint8Array(w*h*4);
+  fill(data, w, h);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  const WM = wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, WM);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, WM);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return t;
+}
+// dirt-ish 32x32 tiling tile
+const dirtTex = texFromData(32, 32, (d, w, h) => {
+  let s = 7;
+  const rnd = () => (s = (s*16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < w*h; i++) {
+    const x = i % w, y = (i / w) | 0;
+    const edge = (x===0||y===0||x===w-1||y===h-1) ? -18 : 0;
+    const n = (rnd()*26 - 13) + edge;
+    d[i*4]   = 110 + n; d[i*4+1] = 79 + n*0.8; d[i*4+2] = 50 + n*0.6; d[i*4+3] = 255;
+  }
+}, 'repeat');
+// stone 32x32
+const stoneTex = texFromData(32, 32, (d, w, h) => {
+  let s = 11;
+  const rnd = () => (s = (s*48271) % 2147483647) / 2147483647;
+  for (let i = 0; i < w*h; i++) {
+    const n = rnd()*22 - 11;
+    d[i*4] = 125 + n; d[i*4+1] = 125 + n; d[i*4+2] = 125 + n; d[i*4+3] = 255;
+  }
+});
+// white "logo" 64x16 with a notch pattern
+const logoTex = texFromData(64, 16, (d, w, h) => {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y*w + x)*4;
+    const on = (y > 1 && y < h-2 && (x % 8 < 6 || y % 4 === 2)) && !(x<6&&y<3) && !(x>w-7&&y>h-4);
+    d[i] = d[i+1] = d[i+2] = on ? 255 : 0; d[i+3] = on ? 255 : 0;
+  }
+});
+// 16x16 lightmap ramp
+const lightTex = texFromData(16, 16, (d, w, h) => {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y*w + x)*4;
+    const sky = 0.55 + 0.45*(1 - y/(h-1)), block = 0.6 + 0.4*(x/(w-1));
+    const b = Math.min(1, sky*block);
+    d[i] = d[i+1] = d[i+2] = b*255; d[i+3] = 255;
+  }
+});
+
+// ---------------- geometry helpers (8-float VO contract family) ----------------
+const vao = gl.createVertexArray();
+function drawQuad(program, floats, strideFloats, attribs) {
+  gl.bindVertexArray(vao);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(floats), gl.DYNAMIC_DRAW);
+  // clear stale enabled arrays from previous program layouts: an enabled
+  // attrib array whose buffer was deleted makes drawArrays fail with
+  // GL_INVALID_OPERATION and NOTHING renders (headless: silent!)
+  for (let i = 0; i < 8; i++) gl.disableVertexAttribArray(i);
+  let off = 0;
+  for (const [loc, size] of attribs) {
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, strideFloats*4, off*4);
+    off += size;
+  }
+  gl.drawArrays(gl.TRIANGLES, 0, floats.length / strideFloats);
+  gl.deleteBuffer(buf);
+}
+function attribLocs(program) {
+  return program.attrs.map(a => gl.getAttribLocation(program.prog, a));
+}
+// name->size contract per M2 vertex formats; locations are queried BY NAME
+// (GLSL compilers assign attrib locations in arbitrary order — pairing
+// sizes by declaration index silently corrupts the VO layout)
+const ATTR_SIZES = { Position: 3, UV0: 2, UV1: 2, UV2: 2, Color: 4, Normal: 3 };
+function attribsWithSizes(program) {
+  return program.attrs.map(a => {
+    const loc = gl.getAttribLocation(program.prog, a);
+    if (loc < 0) throw new Error('attrib not active: ' + a + ' in ' + (program.name || '?'));
+    if (!ATTR_SIZES[a]) throw new Error('no size contract for attrib: ' + a);
+    return [loc, ATTR_SIZES[a]];
+  });
+}
+function quad2f(x1,y1,x2,y2) { return [x1,y1,0, x2,y1,0, x2,y2,0, x1,y1,0, x2,y2,0, x1,y2,0]; }
+function pushQuad(arr, x1,y1,x2,y2, per) { // per = extra floats per vertex
+  const v = [x1,y1,0, x2,y1,0, x2,y2,0, x1,y1,0, x2,y2,0, x1,y2,0];
+  for (const p of v) arr.push(p);
+  return null;
+}
+function quadInterleaved(x1,y1,x2,y2, per, gen) {
+  // 6 verts: TL,BR-BL corner order matching quad2f winding
+  const corners = [[x1,y1],[x2,y1],[x2,y2],[x1,y1],[x2,y2],[x1,y2]];
+  const out = [];
+  for (const [x,y] of corners) { out.push(x, y, 0); out.push(...gen(x, y, per)); }
+  return out;
+}
+const uvTLBR = (x,y, box) => {
+  const [u1,v1,u2,v2] = box;
+  const fx = (x - box[4]) / (box[5] - box[4]), fy = (y - box[6]) / (box[7] - box[6]);
+  return [u1 + (u2-u1)*fx, v1 + (v2-v1)*fy];
+};
+
+// ---------------- draw calls (all through GlStateManager + presets) ----------------
+function drawFrame(t) {
+  gsm.beginFrame(960, 600);
+  applyRenderType(gsm, 'gui');
+
+  // PROJECTION: MC GUI ortho, top-left origin, Y down (v1.1 contract)
+  gsm.matrixMode(C.PROJECTION); gsm.loadIdentity();
+  gsm.ortho(0, LW, LH, 0, -1, 1);
+  gsm.matrixMode(C.MODELVIEW); gsm.loadIdentity();
+
+  // --- 1. background: dirt tiles via position_tex (REPEAT tiling = 1 draw) ---
+  bindUniforms('position_tex', ['ModelViewMat','ProjMat','ColorModulator','Sampler0']);
+  gsm.activeTexture(0); gsm.bindTexture(gl.TEXTURE_2D, dirtTex);
+  gl.uniform1i(progs['position_tex'].uniforms['Sampler0'], 0);
+  gl.uniform4f(progs['position_tex'].uniforms['ColorModulator'], 0.85, 0.85, 0.85, 1);
+  gsm.uniformMatrix4fvMVP(progs['position_tex'].uniforms['ModelViewMat'], progs['position_tex'].uniforms['ProjMat']);
+  const bgBox = [0,0, 16,16, 0, LW, 0, LH]; // uv 0..16 over screen => 32px logical tiles
+  drawQuad(progs['position_tex'], quadInterleaved(0,0,LW,LH, null, (x,y) => uvTLBR(x,y, bgBox)), 5,
+    attribsWithSizes(progs['position_tex']));
+
+  // --- 2. logo: position_tex_color, bobbing ---
+  bindUniforms('position_tex_color', ['ModelViewMat','ProjMat','ColorModulator','Sampler0']);
+  gl.uniform1i(progs['position_tex_color'].uniforms['Sampler0'], 0);
+  gl.uniform4f(progs['position_tex_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.bindTexture(gl.TEXTURE_2D, logoTex);
+  gsm.pushMatrix(); gsm.translatef(LW/2 - 96, 24 + Math.sin(t*0.002)*2.5, 0); // 192x24 centered-ish
+  gsm.uniformMatrix4fvMVP(progs['position_tex_color'].uniforms['ModelViewMat'], progs['position_tex_color'].uniforms['ProjMat']);
+  drawQuad(progs['position_tex_color'], quadInterleaved(0,0,192,24, null, (x, y) => [x/192, y/24, 1, 1, 1, 1]), 9,
+    attribsWithSizes(progs['position_tex_color']));
+  gsm.popMatrix();
+
+  // --- 3. three buttons: position_color per-vertex gradient + position border ---
+  bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  gl.uniform4f(progs['position_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.uniformMatrix4fvMVP(progs['position_color'].uniforms['ModelViewMat'], progs['position_color'].uniforms['ProjMat']);
+  const ac = attribsWithSizes(progs['position_color']);
+  for (let b = 0; b < 3; b++) {
+    const x1 = 90, x2 = 390, y1 = 100 + b*40, y2 = y1 + 28;
+    // gradient body (MC button gray -> darker bottom edge)
+    drawQuad(progs['position_color'], quadInterleaved(x1,y1,x2,y2, null, (x, y) => { const top = y < y1 + 14; return (b === 1 ? (top ? [0.62,0.68,0.72,1] : [0.42,0.47,0.52,1]) : (top ? [0.55,0.55,0.58,1] : [0.38,0.38,0.42,1])); }), 7,
+      ac);
+    // 1px hollow border via current-color program (position): 4 strips
+    bindUniforms('position', ['ModelViewMat','ProjMat','Color']);
+    gl.uniform4f(progs['position'].uniforms['Color'], 0.12, 0.12, 0.14, 1);
+    gsm.uniformMatrix4fvMVP(progs['position'].uniforms['ModelViewMat'], progs['position'].uniforms['ProjMat']);
+    const pc = attribsWithSizes(progs['position']);
+    const bd = 1;
+    for (const [ax1, ay1, ax2, ay2] of [
+      [x1-bd, y1-bd, x2+bd, y1],      // top
+      [x1-bd, y2,    x2+bd, y2+bd],   // bottom
+      [x1-bd, y1,    x1,    y2],      // left
+      [x2,    y1,    x2+bd, y2],      // right
+    ]) drawQuad(progs['position'], quadInterleaved(ax1,ay1,ax2,ay2, null, () => []), 3, pc);
+    bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  }
+
+  // --- 4. hover highlight on middle button: gui_text_hover ---
+  applyRenderType(gsm, 'gui_text_hover');
+  bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  gl.uniform4f(progs['position_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  const pulse = 0.22 + 0.12*Math.sin(t*0.004);
+  drawQuad(progs['position_color'], quadInterleaved(90,140,390,168, null, () => [0.9,0.95,1,pulse]), 7,
+    attribsWithSizes(progs['position_color']));
+
+  // --- 5. tooltip: gui_overlay dark panel + text bars ---
+  applyRenderType(gsm, 'gui_overlay');
+  bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  gsm.uniformMatrix4fvMVP(progs['position_color'].uniforms['ModelViewMat'], progs['position_color'].uniforms['ProjMat']);
+  drawQuad(progs['position_color'], quadInterleaved(320,190,470,226, null, () => [0.06,0.06,0.1,0.92]), 7,
+    attribsWithSizes(progs['position_color']));
+  // "text" bars (purple-ish, like enchant text)
+  for (let r = 0; r < 3; r++) {
+    const y1 = 196 + r*10, w = 132 - r*28;
+    drawQuad(progs['position_color'], quadInterleaved(328,y1,328+w,y1+5, null, () => [0.68,0.5,0.9,1]), 7,
+      attribsWithSizes(progs['position_color']));
+  }
+
+  // --- 6. lightmap panel: position_tex_lightmap_color (right side) ---
+  applyRenderType(gsm, 'gui');
+  bindUniforms('position_tex_lightmap_color', ['ModelViewMat','ProjMat','ColorModulator','Sampler0','Sampler2']);
+  gsm.activeTexture(0); gsm.bindTexture(gl.TEXTURE_2D, stoneTex);
+  gl.uniform1i(progs['position_tex_lightmap_color'].uniforms['Sampler0'], 0);
+  gsm.activeTexture(2); gsm.bindTexture(gl.TEXTURE_2D, lightTex);
+  gl.uniform1i(progs['position_tex_lightmap_color'].uniforms['Sampler2'], 2);
+  gl.uniform4f(progs['position_tex_lightmap_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.uniformMatrix4fvMVP(progs['position_tex_lightmap_color'].uniforms['ModelViewMat'], progs['position_tex_lightmap_color'].uniforms['ProjMat']);
+  const lmc = attribsWithSizes(progs['position_tex_lightmap_color']);
+  const lmQuad = quadInterleaved(350,40,460,90, null, (x, y) => {
+    const u = (x - 350)/110, v = (y - 40)/50;
+    // UV2: texel coords x16 into the 256-wide lightmap sheet (v1.0 rule)
+    const u2 = (2 + u*8) * 16, v2 = (2 + (1-v)*8) * 16;
+    return [u, v, u2, v2, 0.95, 0.95, 0.95, 1];
+  });
+  drawQuad(progs['position_tex_lightmap_color'], lmQuad, 11, lmc);
+
+  // --- 7. normal-shaded mini cube: position_tex_color_normal ---
+  bindUniforms('position_tex_color_normal', ['ModelViewMat','ProjMat','ColorModulator','Sampler0']);
+  gsm.activeTexture(0); gsm.bindTexture(gl.TEXTURE_2D, stoneTex);
+  gl.uniform1i(progs['position_tex_color_normal'].uniforms['Sampler0'], 0);
+  gl.uniform4f(progs['position_tex_color_normal'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.pushMatrix(); gsm.translatef(70, 210, 0); gsm.scalef(30, 30, 0.9); gsm.rotatef(-18, 1, 0, 0); gsm.rotatef(24, 0, 1, 0); // z squashed into ortho [-1,1]
+  gsm.uniformMatrix4fvMVP(progs['position_tex_color_normal'].uniforms['ModelViewMat'], progs['position_tex_color_normal'].uniforms['ProjMat']);
+  const nc = attribsWithSizes(progs['position_tex_color_normal']);
+  const S = 0.5, faces = [
+    // [corners(4), normal, uv box] front +top only for clarity
+    { c: [[-S,-S,S],[S,-S,S],[S,S,S],[-S,S,S]], n: [0,0,1], uv: [0,0,1,1] },
+    { c: [[-S,S,-S],[S,S,-S],[S,S,S],[-S,S,S]], n: [0,1,0], uv: [0,0,1,1] },
+  ];
+  for (const f of faces) {
+    const cs = [f.c[0], f.c[1], f.c[2], f.c[0], f.c[2], f.c[3]];
+    const uvs = [[f.uv[0],f.uv[3]],[f.uv[2],f.uv[3]],[f.uv[2],f.uv[1]],[f.uv[0],f.uv[3]],[f.uv[2],f.uv[1]],[f.uv[0],f.uv[1]]];
+    const out = [];
+    for (let i = 0; i < 6; i++) {
+      out.push(cs[i][0], cs[i][1], cs[i][2]);
+      out.push(uvs[i][0], uvs[i][1]);
+      out.push(0.9, 0.9, 0.9, 1);
+      out.push(f.n[0], f.n[1], f.n[2]);
+    }
+    drawQuad(progs['position_tex_color_normal'], out, 12, nc);
+  }
+  gsm.popMatrix();
+
+  applyRenderType(gsm, 'gui'); // settle back (dedup: near-zero calls)
+}
+
+// ---------------- frame loop + self-report ----------------
+let frames = 0, t0 = performance.now(), lastRaf = t0, fpsAvg = 0, glCallsPerFrame = 0;
+const statsAtStart = gsm.stats.glCalls;
+const DEBUG = /debug/.test(location.search);
+function loop(now) {
+  drawFrame(now);
+  frames++;
+  if (frames === 5) glCallsPerFrame = gsm.stats.glCalls - statsAtStart;
+  if (DEBUG && frames === 2) {
+    // freeze after frame 2 and dump ground truth
+    const gerr = gl.getError();
+    const pr = progs['position_color'].prog;
+    gl.useProgram(pr);
+    const pj = gl.getUniform(pr, gl.getUniformLocation(pr, 'ProjMat'));
+    const mv = gl.getUniform(pr, gl.getUniformLocation(pr, 'ModelViewMat'));
+    const cm = gl.getUniform(pr, gl.getUniformLocation(pr, 'ColorModulator'));
+    const b = new Uint8Array(4);
+    gl.readPixels(240, 599 - 228, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b); // button1 center logical (120,114)
+    // scan for grayish (stone-like) pixels: r≈g≈b and bright enough to not be dirt
+    const W = 960, H = 600, pxAll = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pxAll);
+    let minX = 1e9, maxX = -1, minY = 1e9, maxY = -1, grayCount = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4, r = pxAll[i], g = pxAll[i+1], bl = pxAll[i+2];
+      if (Math.abs(r - g) < 12 && Math.abs(g - bl) < 12 && r > 70 && r < 200) {
+        grayCount++;
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+    window.__DEBUG = { gerr, grayCount, grayBox: {minX, maxX, minY, maxY},
+      pj: [...pj.slice(0, 6)], mv: [...mv.slice(12, 16)], cm: [...cm], pixel: [...b] };
+    info.textContent = 'DEBUG: ' + JSON.stringify(window.__DEBUG);
+    document.title = 'TF-GUI-DONE';
+    return;
+  }
+  if (DEBUG && frames === 1) {
+    // per-step error trace inside one frame: instrument drawQuad + applyRenderType
+    const errs = [];
+    const origDraw = drawQuad, origApply = applyRenderType;
+    // drawQuad is a function declaration in this scope — wrap via window hooks is complex;
+    // instead: trace after each numbered section by calling drawFrame stepwise is invasive.
+    // Simplest: record getError around each drawQuad call via monkey patch on gl.drawArrays:
+    const glCallsTrace = [];
+    const origDrawArrays = gl.drawArrays.bind(gl);
+    gl.drawArrays = function(...a) {
+      const e0 = gl.getError();
+      origDrawArrays(...a);
+      const e1 = gl.getError();
+      const st = gl.getParameter(gl.CURRENT_PROGRAM);
+      glCallsTrace.push({count: a[1], verts: a[2], errBefore: e0, err: e1,
+        progName: Object.keys(progs).find(k => progs[k].prog === st) || 'ext-' + (st ? st.__id || '?' : 'null')});
+    };
+    window.__TRACE = glCallsTrace;
+    drawFrame(now);
+    gl.drawArrays = origDrawArrays;
+    requestAnimationFrame(loop); // continue to the frame-2 freeze
+    return;
+  }
+  if (frames === 90) return report();
+  requestAnimationFrame(loop);
+}
+function px(lx, ly) { // read one logical pixel (device scale 2, y-flip for GL)
+  const dx = Math.min(959, lx*2), glY = Math.max(0, Math.min(599, 599 - ly*2));
+  const b = new Uint8Array(4);
+  gl.readPixels(dx, glY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
+  return [b[0], b[1], b[2], b[3]];
+}
+function nonBlack() {
+  const W = 960, H = 600, b = new Uint8Array(W*H*4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, b);
+  let nb = 0;
+  for (let i = 0; i < W*H; i++) if (b[i*4] + b[i*4+1] + b[i*4+2] > 24) nb++;
+  return nb / (W*H);
+}
+function report() {
+  // in-frame grid scan of the lightmap panel region (device coords)
+  const grid = [];
+  for (let y = 90; y <= 175; y += 28) {
+    const row = [];
+    for (let x = 710; x <= 910; x += 66) {
+      const b = new Uint8Array(4);
+      gl.readPixels(x, 599 - y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
+      row.push(b[0] + ',' + b[1] + ',' + b[2]);
+    }
+    grid.push(row.join(' | '));
+  }
+  const regions = {
+    background_dirt: px(10, 300),
+    logo_area: px(240, 36),
+    button1_body: px(240, 114),
+    hover_overlay: px(240, 154),
+    tooltip_panel: px(465, 210),
+    lightmap_panel: px(405, 65),
+    cube_face: px(70, 208),
+  };
+  const result = {
+    frames: 90,
+    fpsAvg: Math.round(90 * 1000 / (performance.now() - t0)),
+    glCallsPerFrame,
+    dedupSkipped: gsm.stats.skippedByCache,
+    nonBlackRatio: Math.round(nonBlack()*1000)/1000,
+    regions,
+    webmcReady: true,
+  };
+  result.panelGrid = grid;
+  window.__GUI_RESULT = result;
+  // M2 loader-side webmcReady signal (contract with M6 smoke gate / StardustFox M4)
+  window.__M2_READY = true;
+  window.dispatchEvent(new CustomEvent('webmcReady', { detail: { webgl2: !!gl, gui: true, frames: 90 } }));
+  info.textContent = 'M2 v1.1 GUI bring-up\nframes: 90  fps: ' + result.fpsAvg +
+    '\nGL calls (first 5 frames): ' + glCallsPerFrame + '\ndedup skips: ' + gsm.stats.skippedByCache +
+    '\nnon-black: ' + (result.nonBlackRatio*100).toFixed(1) + '%' +
+    '\nwebmcReady dispatched ✓';
+  document.title = 'TF-GUI-DONE';
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

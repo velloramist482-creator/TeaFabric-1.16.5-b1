@@ -1,0 +1,13 @@
+{
+  "vertexShader": "position_tex_color.vsh",
+  "fragmentShader": "position_tex_color.fsh",
+  "attributes": ["Position", "UV0", "Color"],
+  "samplers": [
+    { "name": "Sampler0" }
+  ],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 1 },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 1 },
+    { "name": "ColorModulator", "type": "float", "count": 4 }
+  ]
+}

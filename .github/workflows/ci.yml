@@ -1,0 +1,30 @@
+# CI gate — first-line: M2 render shim (m2/). Other lines: add jobs with their own working-directory.
+name: m2-gate
+on: [push, pull_request]
+
+defaults:
+  run:
+    working-directory: m2
+
+jobs:
+  m2-unit-and-convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Convert shaders (GLSL 1.50 -> ES 3.00)
+        run: node tools/convert_core_shaders.js --in samples --out build/shaders --shims tools/inline_shims
+      - name: Unit gates
+        run: |
+          node test/test_glstatemanager.js
+          node test/test_converter.js
+          node test/test_rendertype.js
+          node test/test_gui_shaders.js
+          node test/bench_dedup.js
+      - name: Red-line self-check (zero MC jar/epk assets in m2 tree)
+        run: |
+          ! find . -name "*.jar" -print | grep -q .
+          ! find . -name "*.epk" -print | grep -q .
+          ! find . -name "*.class" -print | grep -q .
