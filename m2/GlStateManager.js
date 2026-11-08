@@ -44,6 +44,20 @@ const GL_CONST = {
   // matrix modes
   MODELVIEW: 0x1700, PROJECTION: 0x1701, TEXTURE: 0x1702,
   COLOR: 0x1800, // legacy color matrix: kept as no-op slot for parity
+  // fixed-pipeline caps the 1.16.5 client still toggles (v1.2)
+  LIGHTING: 0x1600, LIGHT0: 0x4000, LIGHT1: 0x4001, FOG: 0x0B60,
+  ALPHA_TEST: 0x0BC0, NORMALIZE: 0x0BA2, RESCALE_NORMAL: 0x803A,
+  // fog params (glFogf/glFogfv pnames)
+  FOG_MODE: 0x0BE5, FOG_DENSITY: 0x0B62, FOG_START: 0x0B63, FOG_END: 0x0B64, FOG_COLOR: 0x0B66,
+  // fog modes (GL_EXP/GL_EXP2 clash-free aliases; GL linear fog == 0x2601)
+  FOG_LINEAR: 0x2601, FOG_EXP: 0x8000, FOG_EXP2: 0x8002,
+  // light params (glLightfv pnames)
+  AMBIENT: 0x1200, DIFFUSE: 0x1201, SPECULAR: 0x1202, POSITION: 0x1203,
+  LIGHT_MODEL_AMBIENT: 0x0B67, LIGHT_MODEL_LOCAL_VIEWER: 0x0B51,
+  // shade model
+  FLAT: 0x1D00, SMOOTH: 0x1D01,
+  // alpha func
+  GL_LESS_REF: 0x0201, // alphaFunc reuse of depth-style func constants above
 };
 
 class Matrix4f {
@@ -132,6 +146,24 @@ class GlStateManager {
     this._scissor = { ...makeCap(), x: 0, y: 0, w: 0, h: 0 };
     this.stencil = { ...makeCap(), func: GL_CONST.ALWAYS, ref: 0, mask: 0xFF, sfail: 0x1E00, zfail: 0x1E00, zpass: 0x1E00 };
     this._logicOp = { ...makeCap(), op: GL_CONST.COPY };
+
+    // ---- fixed-pipeline blocks (v1.2: what the 1.16.5 client still drives) --
+    // 1.16.5 world/GUI is fixed-function GL; these blocks carry the state the
+    // shader specializer (Specializer.js) bakes into per-combination programs.
+    this.lighting = {
+      enabled: false, dirty: true,
+      modelAmbient: [0.2, 0.2, 0.2, 1.0],
+      lights: [
+        // GL_LIGHT0 — MC's main diffuse light; GL_LIGHT1 — the fill light
+        { enabled: true, dirty: true, ambient: [0, 0, 0, 1], diffuse: [0.7, 0.7, 0.7, 1], specular: [0, 0, 0, 0], position: [0, 1, 0, 0] },
+        { enabled: true, dirty: true, ambient: [0, 0, 0, 1], diffuse: [0.1, 0.1, 0.1, 1], specular: [0, 0, 0, 0], position: [0, -1, 0, 0] },
+      ],
+    };
+    this.fog = {
+      enabled: false, dirty: true, mode: GL_CONST.FOG_LINEAR,
+      density: 1.0, start: 0.0, end: 1.0, color: [0, 0, 0, 0],
+    };
+    this.alphaTest = { enabled: false, dirty: true, func: GL_CONST.GREATER, ref: 0.1 };
     this._viewport = { x: 0, y: 0, w: 0, h: 0, dirty: true };
     this._lineWidth = { v: 1, dirty: true };
 
@@ -316,6 +348,75 @@ class GlStateManager {
   texParameter2D(target, pname, param) { this._gl('texParameteri', target, pname, param); }
   uploadTexture2D(level, internalFormat, w, h, format, type, pixels) {
     this._gl('texImage2D', this.gl.TEXTURE_2D, level, internalFormat, w, h, 0, format, type, pixels);
+  }
+
+  // ================= fixed-pipeline virtual state (v1.2) ===================
+  // The 1.16.5 client still drives GL_LIGHTING / GL_FOG / GL_ALPHA_TEST.
+  // WebGL2 has NO such caps — gl.enable(0x1600) would be GL_INVALID_ENUM — so
+  // these blocks are CPU-ONLY virtual state. The shader specializer
+  // (Specializer.js) snapshots them and bakes them into per-combination
+  // GLSL ES 3.00 programs; no real GL enable/disable is ever issued here.
+  lightingEnable()   { this._capVirt(this.lighting, true); }
+  lightingDisable()  { this._capVirt(this.lighting, false); }
+  fogEnable()        { this._capVirt(this.fog, true); }
+  fogDisable()       { this._capVirt(this.fog, false); }
+  alphaTestEnable()  { this._capVirt(this.alphaTest, true); }
+  alphaTestDisable() { this._capVirt(this.alphaTest, false); }
+  _capVirt(block, on) {
+    if (block.enabled !== on) { block.enabled = on; block.dirty = true; }
+    else this.stats.skippedByCache++;
+  }
+
+  fogf(pname, v) {
+    const f = this.fog;
+    const field = pname === GL_CONST.FOG_MODE ? 'mode' : pname === GL_CONST.FOG_DENSITY ? 'density'
+                : pname === GL_CONST.FOG_START ? 'start' : pname === GL_CONST.FOG_END ? 'end' : null;
+    if (!field) throw new Error('fogf: unsupported pname 0x' + pname.toString(16));
+    if (f[field] !== v) { f[field] = v; f.dirty = true; }
+    else this.stats.skippedByCache++;
+  }
+  fogfv(pname, arr) {
+    if (pname !== GL_CONST.FOG_COLOR) throw new Error('fogfv: unsupported pname 0x' + pname.toString(16));
+    const f = this.fog;
+    if (f.color[0] !== arr[0] || f.color[1] !== arr[1] || f.color[2] !== arr[2] || f.color[3] !== arr[3]) {
+      f.color = [arr[0], arr[1], arr[2], arr[3]]; f.dirty = true;
+    } else this.stats.skippedByCache++;
+  }
+  lightfv(light, pname, vec) {
+    const idx = light - GL_CONST.LIGHT0;
+    if (idx < 0 || idx >= this.lighting.lights.length) throw new Error('lightfv: unsupported light 0x' + light.toString(16));
+    const L = this.lighting.lights[idx];
+    const field = pname === GL_CONST.AMBIENT ? 'ambient' : pname === GL_CONST.DIFFUSE ? 'diffuse'
+                : pname === GL_CONST.SPECULAR ? 'specular' : pname === GL_CONST.POSITION ? 'position' : null;
+    if (!field) throw new Error('lightfv: unsupported pname 0x' + pname.toString(16));
+    const t = L[field];
+    if (t[0] !== vec[0] || t[1] !== vec[1] || t[2] !== vec[2] || t[3] !== vec[3]) {
+      L[field] = [vec[0], vec[1], vec[2], vec[3]];
+      L.dirty = true; this.lighting.dirty = true;
+    } else this.stats.skippedByCache++;
+  }
+  lightModelfv(pname, vec) {
+    if (pname !== GL_CONST.LIGHT_MODEL_AMBIENT) throw new Error('lightModelfv: unsupported pname 0x' + pname.toString(16));
+    const m = this.lighting.modelAmbient;
+    if (m[0] !== vec[0] || m[1] !== vec[1] || m[2] !== vec[2] || m[3] !== vec[3]) {
+      this.lighting.modelAmbient = [vec[0], vec[1], vec[2], vec[3]]; this.lighting.dirty = true;
+    } else this.stats.skippedByCache++;
+  }
+  alphaFunc(func, ref) {
+    const a = this.alphaTest;
+    if (a.func !== func || a.ref !== ref) { a.func = func; a.ref = ref; a.dirty = true; }
+    else this.stats.skippedByCache++;
+  }
+  shadeModel(mode) {
+    if (this._shadeModel !== mode) { this._shadeModel = mode; }
+    else this.stats.skippedByCache++;
+  }
+  /** Clear the virtual blocks' dirty flags once the specializer has consumed them. */
+  _flushVirtualState() {
+    this.lighting.dirty = false;
+    for (const L of this.lighting.lights) L.dirty = false;
+    this.fog.dirty = false;
+    this.alphaTest.dirty = false;
   }
 
   // ================= matrix stack (CPU-side) ===============================

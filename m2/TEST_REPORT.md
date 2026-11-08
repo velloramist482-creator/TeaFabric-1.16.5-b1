@@ -110,3 +110,45 @@ MC-GUI ortho (top-left origin, Y-down), and dispatches the webmcReady signal
 > Full regression re-run 2026-11-08 10:20 UTC+8 on the exact tree pushed in this
 > PR: all suites re-executed, 132/132 still green (converter 68, GSM 19,
 > rendertype 7, GUI contract 19, real-browser 8/8 compile + 11/11 GUI pixels).
+
+---
+
+# v1.2 — Fixed-pipeline specializer JIT (2026-11-08, same day)
+
+Route aligned with the reference project's "per GL-state-combination on-demand
+shader specialization + cache": WebGL2 has no fixed pipeline, so on FIRST use of
+each state combination a dedicated GLSL ES 3.00 program is GENERATED with the
+state baked in as constants (zero runtime branches), compiled once, and cached
+(LRU, cap 64).
+
+## New deliverables
+| File | Role | LOC |
+|---|---|---|
+| Specializer.js | snapshot -> normalized key -> state-baked ES 3.00 generator -> LRU cache | ~230 |
+| GlStateManager.js (ext) | CPU-only virtual state blocks: lighting (2 directional lights + model ambient), fog (linear/exp/exp2), alphaTest, shadeModel; fogf/fogfv/lightfv/lightModelfv/alphaFunc/shadeModel; NO GL enable calls for these caps (WebGL2 has none — baking replaces them) | +110 |
+| test/test_specializer.js | 19 contract tests (below) | ~200 |
+| test/run_specializer_check.js | REAL browser compile+link of 4 representative combos + one-frame pixel probe with fog/light validation; CDP tab hygiene (no renderer leaks) | ~260 |
+
+## Suite I — Specializer contract tests
+`node test/test_specializer.js` → **19/19 PASS**
+Covers: snapshot/key order-independence, fog-mode/ref key splitting, state
+baking (fog off ⇒ ZERO fog code in source — the no-branch guarantee), linear
+fog literal baking, exp2 formula, alphaTest discard+ref literal, lighting-off
+skips the normal pipeline, headlight combo uses the SAME shade formula as the
+fallback family, UV2 texel×16 /256.0 contract, LRU miss/hit/evict/refresh,
+virtual caps issue ZERO GL calls, virtual-cap dedup skips, state mutation +
+fail-fast pnames, ES 3.00 hygiene, stable fpjit_<fnv> naming.
+
+## Suite J — Specializer REAL WebGL2 verification
+`node test/run_specializer_check.js` → **8/8 PASS**
+```
+4 combos compile+link in real WebGL2: gui(fog off) / world(lighting+linear fog
++UV2+alpha off) / cutout(exp2 fog+alpha test) / headlight(fallback-equivalent)
+one-frame probe (full-state combo): nonBlack 51.6% (full-screen tri)
+  center rgb(189,202,217) — blue-dominant (fog color) AND lit-but-fogged;
+  matches the analytic prediction r≈187 from shade×light×fogFactor.
+```
+Also fixed during bring-up: vec3() constructor fed 4 components (position w) —
+a REAL bug caught by the real GLSL compiler, invisible to string tests.
+
+## Suite totals (v1.2): 132 + 19 + 8 = **159 assertions green**

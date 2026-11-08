@@ -40,12 +40,14 @@ node m2/test/bench_dedup.js           # PASS
 # real-browser checks (need a WebGL2-capable Chromium; uses agent-browser)
 node m2/test/run_webgl2_check.js      # 8/8 programs compile+link
 node m2/test/run_gui_demo_check.js    # 11/11 pixel assertions, fps/non-black metrics
+node m2/test/test_specializer.js      # 19/19 fixed-pipe JIT contract
+node m2/test/run_specializer_check.js # 8/8 specialized combos compile+render
 ```
 
 CI (`.github/workflows/ci.yml` in this PR) runs the unit gates + converter + a
 zero-jar/epk red-line self-check on every push and PR.
 
-## Results (v1.1, full regression re-run 2026-11-08 10:20 UTC+8)
+## Results (v1.1 + v1.2, full regression re-run 2026-11-08)
 
 | suite | result |
 |---|---|
@@ -53,9 +55,18 @@ zero-jar/epk red-line self-check on every push and PR.
 | converter | 68/68 |
 | RenderType table | 7/7 |
 | GUI/fixed-pipe contract | 19/19 |
-| real WebGL2 compile+link | 8/8 |
+| specializer JIT contract (v1.2) | 19/19 |
+| real WebGL2 compile+link (fallback family) | 8/8 |
 | live GUI demo pixels | 11/11 (55 fps, 98.7% non-black, dedup 3594 skips) |
-| **total** | **132 assertions green** |
+| specialized combos compile+render probe (v1.2) | 8/8 |
+| **total** | **159 assertions green** |
+
+**v1.2 adds the fixed-pipeline specializer JIT** (`Specializer.js`): each GL
+state combination (lighting/fog/alphaTest/vertex format) gets a dedicated
+state-baked GLSL ES 3.00 program generated on first use, LRU-cached, zero
+runtime branches. GlStateManager gains CPU-only virtual state blocks
+(lighting/fog/alphaTest) — WebGL2 has no such caps, so baking replaces
+enable() calls entirely (verified: zero GL enable/disable calls emitted).
 
 v1.1 fixed 7 real library bugs the GUI demo flushed out (per-program MVP dedup,
 stack-key translation components, stale enabled attrib arrays, attrib size
