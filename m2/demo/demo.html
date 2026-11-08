@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>TeaFabric M2 Live Demo — WebGL2 voxel render</title>
+<style>
+  html,body{margin:0;height:100%;background:#10141c;color:#cfe3ff;font:13px/1.4 monospace;overflow:hidden}
+  #hud{position:fixed;top:8px;left:8px;background:rgba(8,12,20,.82);border:1px solid #2a3a55;padding:8px 12px;border-radius:6px;white-space:pre;z-index:9}
+  canvas{display:block;width:100vw;height:100vh}
+  #tip{position:fixed;bottom:8px;left:8px;color:#7f92ad;z-index:9}
+</style>
+</head>
+<body>
+<div id="hud">booting…</div>
+<div id="tip">拖拽旋转视角 · 滚轮缩放 · TeaFabric M2 渲染基座活体验证（零 Mojang 资源）</div>
+<canvas id="cv"></canvas>
+<script src="../GlStateManager.js"></script>
+<script src="../RenderTypeStates.js"></script>
+<script>
+'use strict';
+const { GlStateManager, Matrix4f, GL_CONST } = window;
+const { applyRenderType } = window;
+
+// ---------------- program sources (converter OUTPUT, verbatim) ----------------
+// These are the exact .vsh300/.fsh300 artifacts produced offline by
+// tools/convert_core_shaders.js from our own 1.16.5-style samples.
+const VS300 = `#version 300 es
+precision highp float;
+in vec3 Position;
+in vec2 UV0;
+in vec4 Color;
+in ivec2 UV2;
+uniform sampler2D Sampler0;
+uniform sampler2D Sampler2;
+uniform mat4 ModelViewMat;
+uniform mat4 ProjMat;
+uniform vec4 ColorModulator;
+uniform vec3 Light0_Direction;
+uniform vec3 Light1_Direction;
+uniform float FogStart;
+uniform float FogEnd;
+uniform vec4 FogColor;
+out vec4 vertexColor;
+out vec2 uv0;
+out vec4 lightMapColor;
+out vec3 vertexDistance;
+void main() {
+    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);
+    vec4 lm = texture(Sampler2, (vec2(UV2) + vec2(0.5)) / 256.0);
+    vec4 base = Color * lm;
+    float l0 = max(0.0, dot(normalize(Light0_Direction), vec3(0.0,1.0,0.0)));
+    float l1 = max(0.0, dot(normalize(Light1_Direction), vec3(0.0,1.0,0.0)));
+    float lm2 = max(l0, l1);
+    vertexColor = base * lm2 * ColorModulator;
+    uv0 = UV0;
+    vertexDistance = (ModelViewMat * vec4(Position, 1.0)).xyz;
+}`;
+const FS300 = `#version 300 es
+precision highp float;
+precision highp int;
+layout(location = 0) out vec4 m2_fragColor;
+uniform sampler2D Sampler0;
+uniform float FogStart;
+uniform float FogEnd;
+uniform vec4 FogColor;
+in vec4 vertexColor;
+in vec2 uv0;
+in vec3 vertexDistance;
+void main() {
+    vec4 texel = texture(Sampler0, uv0);
+    if (texel.a < 0.1) discard;
+    float dist = length(vertexDistance);
+    float t = clamp((dist - FogStart) / (FogEnd - FogStart), 0.0, 1.0);
+    m2_fragColor = vec4(mix(texel.rgb * vertexColor.rgb, FogColor.rgb, t), vertexColor.a * texel.a);
+}`;
+
+// ---------------- procedural textures (OWN pixels, zero Mojang assets) --------
+function makeBlockAtlas() {
+  const S = 16, c = document.createElement('canvas'); c.width = c.height = S * 4;
+  const x = c.getContext('2d');
+  const px = (ox, oy, xx, yy, col) => { x.fillStyle = col; x.fillRect(ox * S + xx, oy * S + yy, 1, 1); };
+  const rnd = (s) => { s = Math.sin(s * 127.1) * 43758.5453; return s - Math.floor(s); };
+  for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) {
+    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) {
+      const n = rnd(tx * 31 + ty * 57 + xx * 7 + yy * 13);
+      let col;
+      if (ty === 0 && tx < 2) { col = n > .5 ? '#5d9a3c' : '#548e37'; }
+      else if (tx >= 2 && ty === 0) { col = n > .6 ? '#79553a' : '#6e4c33'; }
+      else if (ty === 1 && tx < 2) { col = yy < 3 ? (n > .5 ? '#5d9a3c' : '#548e37') : (n > .6 ? '#79553a' : '#6e4c33'); }
+      else { col = n > .75 ? '#8a8a8a' : n > .3 ? '#7f7f7f' : '#767676'; }
+      px(tx, ty, xx, yy, col);
+    }
+  }
+  return c;
+}
+function makeLightmap() {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const x = c.getContext('2d');
+  for (let yy = 0; yy < 16; yy++) for (let xx = 0; xx < 16; xx++) {
+    const v = Math.min(1, (xx + yy) / 30) * 0.85 + 0.15;
+    x.fillStyle = `rgb(${v * 255 | 0},${v * 255 | 0},${v * 255 | 0})`;
+    x.fillRect(xx, yy, 1, 1);
+  }
+  return c;
+}
+
+// ---------------- voxel scene: self-made terrain (grass platform + tower) -----
+const TILE = { grassTop: 0, grassSide: 1, dirt: 2, stone: 3 };
+const BLOCKS = [];
+for (let i = 0; i < 36; i++) {
+  const gx = i % 6, gz = (i / 6) | 0;
+  BLOCKS.push([gx - 2.5, 0, gz - 2.5, (gx === 0 && gz === 0) ? 3 : 0]);
+}
+BLOCKS.push([0, 1, 0, 1], [0, 1, 1, 1], [0, 1, -1, 1], [1, 1, 0, 1], [1, 1, 1, 3]);
+BLOCKS.push([0, 2, 0, 1], [0, 2, 1, 1]);
+BLOCKS.push([0, 3, 0, 1]);
+
+function buildMesh() {
+  // 8-float VO per contract v1: [x, y, z, u, v, r, g, b] interleaved
+  const verts = [], idx = [];
+  const faces = [
+    { n: [0, 1, 0],  c: [[-1, 1, -1], [-1, 1, 1], [1, 1, 1], [1, 1, -1]] },
+    { n: [0, -1, 0], c: [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]] },
+    { n: [1, 0, 0],  c: [[1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1]] },
+    { n: [-1, 0, 0], c: [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]] },
+    { n: [0, 0, 1],  c: [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]] },
+    { n: [0, 0, -1], c: [[1, -1, -1], [-1, -1, -1], [-1, 1, -1], [1, 1, -1]] },
+  ];
+  const uvCorners = [[0, 1], [0, 0], [1, 0], [1, 1]];
+  let vi = 0;
+  for (const [bx, by, bz, tile] of BLOCKS) {
+    for (const f of faces) {
+      const tileUV = [tile % 4, (tile / 4) | 0];
+      for (let k = 0; k < 4; k++) {
+        const cx = f.c[k][0] * 0.5 + bx, cy = f.c[k][1] * 0.5 + by, cz = f.c[k][2] * 0.5 + bz;
+        const shade = f.n[1] === 1 ? 1.0 : f.n[1] === -1 ? 0.5 : (f.n[0] !== 0 ? 0.8 : 0.65);
+        const [u, v] = uvCorners[k];
+        verts.push(cx, cy, cz, (tileUV[0] + u) / 4, (tileUV[1] + v) / 4, shade, shade, shade);
+      }
+      idx.push(vi, vi + 1, vi + 2, vi, vi + 2, vi + 3);
+      vi += 4;
+    }
+  }
+  return { verts: new Float32Array(verts), idx: new Uint16Array(idx) };
+}
+
+// ---------------- main --------------------------------------------------------
+window.addEventListener('load', () => {
+  const cv = document.getElementById('cv');
+  const gl = cv.getContext('webgl2', { antialias: true });
+  const hud = document.getElementById('hud');
+  if (!gl) { hud.textContent = 'WebGL2 unavailable'; return; }
+
+  const gsm = new GlStateManager(gl);
+  const prog = gsm.createProgram(VS300, FS300);
+  gsm.useProgram(prog); // MC semantics: bind program BEFORE querying uniforms
+  const U = {};
+  for (const n of ['ModelViewMat', 'ProjMat', 'ColorModulator', 'Light0_Direction', 'Light1_Direction', 'FogStart', 'FogEnd', 'FogColor', 'Sampler0', 'Sampler2'])
+    U[n] = gsm.uniformLocation(n);
+
+  const atlasTex = gl.createTexture();
+  gsm.activeTexture(0); gsm.bindTexture(GL_CONST.TEXTURE_2D, atlasTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, makeBlockAtlas());
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const lmTex = gl.createTexture();
+  gsm.activeTexture(2); gsm.bindTexture(GL_CONST.TEXTURE_2D, lmTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, makeLightmap());
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+  const { verts, idx } = buildMesh();
+  const vao = gl.createVertexArray(); gsm.bindVertexArray(vao);
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  const STRIDE = 8 * 4;
+  const attr = (name, size, off) => {
+    const loc = gl.getAttribLocation(prog, name);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, STRIDE, off);
+  };
+  attr('Position', 3, 0); attr('UV0', 2, 12); attr('Color', 3, 20);
+  const uv2Loc = gl.getAttribLocation(prog, 'UV2');
+  gl.disableVertexAttribArray(uv2Loc);
+  // constant attrib via correct API; MC lightmap UV2 is texel coords (x16):
+  // (224.5)/256 = texel 14 of the 16x16 lightmap -> bright corner
+  gl.vertexAttribI4i(uv2Loc, 224, 224, 0, 0);
+
+  let yaw = 35, pitch = 22, dist = 9, dragging = false, lx = 0, ly = 0;
+  cv.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+  window.addEventListener('mouseup', () => dragging = false);
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    yaw += (e.clientX - lx) * 0.5; pitch = Math.max(-80, Math.min(80, pitch + (e.clientY - ly) * 0.4));
+    lx = e.clientX; ly = e.clientY;
+  });
+  cv.addEventListener('wheel', e => { dist = Math.max(4, Math.min(24, dist + Math.sign(e.deltaY) * 0.8)); }, { passive: true });
+
+  const stats = window.__DEMO_STATS = { frames: 0, glCallsTotal: 0, skippedTotal: 0, fps: 0, nonBlackRatio: -1 };
+  let lastT = performance.now(), fpsAcc = 0, fpsN = 0;
+
+  function frame(now) {
+    const dt = now - lastT; lastT = now;
+    fpsAcc += 1000 / Math.max(dt, 1); fpsN++;
+    const gl0 = gsm.stats.glCalls, sk0 = gsm.stats.skippedByCache;
+
+    const W = cv.width = cv.clientWidth * devicePixelRatio | 0;
+    const H = cv.height = cv.clientHeight * devicePixelRatio | 0;
+    gsm.beginFrame(W, H);
+    // MC semantics: GameRenderer sets the sky clear color each frame, then clears
+    gsm.clearColor4f(0.55, 0.68, 0.85, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gsm.matrixMode(GL_CONST.PROJECTION); gsm.loadIdentity();
+    gsm.perspective(70, W / H, 0.1, 100);
+    gsm.matrixMode(GL_CONST.MODELVIEW); gsm.loadIdentity();
+    gsm.translatef(0, -1.2, -dist);
+    gsm.rotatef(pitch, 1, 0, 0);
+    gsm.rotatef(yaw, 0, 1, 0);
+
+    gsm.useProgram(prog);
+    gsm.uniformMatrix4fvMVP(U.ModelViewMat, U.ProjMat);
+    gl.uniform4f(U.ColorModulator, 1, 1, 1, 1);
+    gl.uniform3f(U.Light0_Direction, 0.3, 1, 0.5);
+    gl.uniform3f(U.Light1_Direction, -0.4, 1, -0.2);
+    gl.uniform1f(U.FogStart, 14);
+    gl.uniform1f(U.FogEnd, 40);
+    gl.uniform4f(U.FogColor, 0.55, 0.68, 0.85, 1);
+    gsm.activeTexture(0); gsm.bindTexture(GL_CONST.TEXTURE_2D, atlasTex);
+    gsm.activeTexture(2); gsm.bindTexture(GL_CONST.TEXTURE_2D, lmTex);
+    gl.uniform1i(U.Sampler0, 0);
+    gl.uniform1i(U.Sampler2, 2);
+
+    applyRenderType(gsm, 'rendertype_solid');
+    gsm.bindVertexArray(vao);
+    gl.drawElements(gl.TRIANGLES, idx.length, gl.UNSIGNED_SHORT, 0);
+
+    stats.frames++;
+    stats.glCallsTotal += gsm.stats.glCalls - gl0;
+    stats.skippedTotal += gsm.stats.skippedByCache - sk0;
+    if (fpsN >= 30) { stats.fps = (fpsAcc / fpsN); fpsAcc = 0; fpsN = 0; }
+
+    if (stats.nonBlackRatio < 0 && stats.frames === 30) {
+      const px = new Uint8Array(W * H * 4);
+      gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let lit = 0; for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] > 30) lit++;
+      stats.nonBlackRatio = lit / (W * H);
+    }
+    hud.textContent =
+      `TeaFabric M2 live demo — WebGL2\n` +
+      `fps ${stats.fps.toFixed(0)}   frames ${stats.frames}\n` +
+      `GL calls/frame ${(stats.glCallsTotal / stats.frames) | 0}   dedup-skipped/frame ${(stats.skippedTotal / stats.frames) | 0}\n` +
+      `VO floats ${(verts.length / 8) | 0}   indices ${idx.length}   draw 1/frame\n` +
+      `render sanity: ${(stats.nonBlackRatio * 100).toFixed(1)}% non-black pixels`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

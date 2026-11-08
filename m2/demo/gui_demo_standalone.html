@@ -1,0 +1,935 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TeaFabric M2 v1.1 — GUI Bring-up Demo</title>
+<style>
+  html,body{margin:0;background:#0d0d10;color:#9aa;font-family:monospace}
+  #wrap{display:flex;gap:12px;padding:12px}
+  canvas{image-rendering:pixelated;border:2px solid #2a2a33;background:#000}
+  #info{font-size:12px;line-height:1.5;white-space:pre}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv" width="960" height="600"></canvas>
+  <div id="info">booting…</div>
+</div>
+<script>
+/* ==== inlined from GlStateManager.js (IIFE-wrapped) ==== */
+(function(){
+/**
+ * TeaFabric M2 — GlStateManager (WebGL2 backend)
+ * ================================================
+ * 1:1 port of net.minecraft.client.renderer.GlStateManager (1.16.5) semantics
+ * onto WebGL2, with a full CPU-side matrix stack (fixed-function GL calls do
+ * not exist in WebGL2, so _pushMatrix/_orthoModelView etc. run in JS and are
+ * uploaded as uniforms — matches the core-shader uniform contract of M3).
+ *
+ * Design goals (per room contract v1):
+ *  - Zero redundant GL calls: every state goes through a cache + dirty check.
+ *  - API surface mirrors 1.16.5 GlStateManager so the TeaVM-generated code
+ *    (CGLM.mapClassName output) can bind methods mechanically.
+ *  - EXT_framebuffer_object / ARB_shader_objects legacy entry points are
+ *    mapped onto WebGL2 core (gl.createFramebuffer / gl.createProgram).
+ *  - No GL state leaks: endFrame() restores a known-good baseline.
+ *
+ * License: MIT (TeaFabric project). No Mojang code or assets contained.
+ */
+
+const GL_CONST = {
+  // blend factors
+  ZERO: 0, ONE: 1, SRC_COLOR: 0x0300, ONE_MINUS_SRC_COLOR: 0x0301,
+  SRC_ALPHA: 0x0302, ONE_MINUS_SRC_ALPHA: 0x0303, DST_ALPHA: 0x0304,
+  ONE_MINUS_DST_ALPHA: 0x0305, DST_COLOR: 0x0306, ONE_MINUS_DST_COLOR: 0x0307,
+  SRC_ALPHA_SATURATE: 0x0308,
+  // blend ops (1.16.5 _blendFuncSeparateEXT uses glBlendEquationSeparate)
+  FUNC_ADD: 0x8006, MIN: 0x8007, MAX: 0x8008,
+  FUNC_SUBTRACT: 0x800A, FUNC_REVERSE_SUBTRACT: 0x800B,
+  // depth
+  NEVER: 0x0200, LESS: 0x0201, EQUAL: 0x0202, LEQUAL: 0x0203, GREATER: 0x0204,
+  NOTEQUAL: 0x0205, GEQUAL: 0x0206, ALWAYS: 0x0207,
+  // cull
+  FRONT: 0x0404, BACK: 0x0405, FRONT_AND_BACK: 0x0408,
+  // logic op
+  CLEAR: 0x1500, SET: 0x150F, COPY: 0x1503, COPY_INVERTED: 0x150C,
+  NOOP: 0x1505, INVERT: 0x150A, AND: 0x1501, NAND: 0x150E, OR: 0x1507,
+  NOR: 0x1508, XOR: 0x1506, AND_REVERSE: 0x1502, AND_INVERTED: 0x1504,
+  OR_REVERSE: 0x150B, OR_INVERTED: 0x150D,
+  // texture
+  TEXTURE_2D: 0x0DE1, NEAREST: 0x2600, LINEAR: 0x2601,
+  NEAREST_MIPMAP_NEAREST: 0x2700, LINEAR_MIPMAP_NEAREST: 0x2701,
+  NEAREST_MIPMAP_LINEAR: 0x2702, LINEAR_MIPMAP_LINEAR: 0x2703,
+  CLAMP: 0x2900, CLAMP_TO_EDGE: 0x812F, REPEAT: 0x2901,
+  // matrix modes
+  MODELVIEW: 0x1700, PROJECTION: 0x1701, TEXTURE: 0x1702,
+  COLOR: 0x1800, // legacy color matrix: kept as no-op slot for parity
+};
+
+class Matrix4f {
+  constructor() { this.m = new Float32Array(16); this.identity(); }
+  identity() {
+    const m = this.m; m.fill(0);
+    m[0] = m[5] = m[10] = m[15] = 1; return this;
+  }
+  static mul(out, a, b) { // column-major, out = a * b
+    const o = out.m, A = a.m, B = b.m;
+    for (let c = 0; c < 4; c++) {
+      const b0 = B[c * 4], b1 = B[c * 4 + 1], b2 = B[c * 4 + 2], b3 = B[c * 4 + 3];
+      o[c * 4]     = A[0] * b0 + A[4] * b1 + A[8]  * b2 + A[12] * b3;
+      o[c * 4 + 1] = A[1] * b0 + A[5] * b1 + A[9]  * b2 + A[13] * b3;
+      o[c * 4 + 2] = A[2] * b0 + A[6] * b1 + A[10] * b2 + A[14] * b3;
+      o[c * 4 + 3] = A[3] * b0 + A[7] * b1 + A[11] * b2 + A[15] * b3;
+    }
+    return out;
+  }
+  translate(x, y, z) {
+    const t = new Matrix4f();
+    t.m[12] = x; t.m[13] = y; t.m[14] = z;
+    Matrix4f.mul(this, this, t); return this;
+  }
+  scale(x, y, z) {
+    const s = new Matrix4f();
+    s.m[0] = x; s.m[5] = y; s.m[10] = z;
+    Matrix4f.mul(this, this, s); return this;
+  }
+  rotate(angleDeg, x, y, z) {
+    const r = new Matrix4f(), rad = angleDeg * Math.PI / 180;
+    const c = Math.cos(rad), s = Math.sin(rad), ic = 1 - c;
+    const len = Math.hypot(x, y, z) || 1; x /= len; y /= len; z /= len;
+    const m = r.m;
+    m[0] = x * x * ic + c;      m[1] = y * x * ic + z * s; m[2] = x * z * ic - y * s;
+    m[4] = x * y * ic - z * s;  m[5] = y * y * ic + c;     m[6] = y * z * ic + x * s;
+    m[8] = x * z * ic + y * s;  m[9] = y * z * ic - x * s; m[10] = z * z * ic + c;
+    Matrix4f.mul(this, this, r); return this;
+  }
+  static ortho(out, l, r, b, t, n, f) {
+    out.identity();
+    const m = out.m;
+    m[0] = 2 / (r - l); m[5] = 2 / (t - b); m[10] = -2 / (f - n);
+    m[12] = -(r + l) / (r - l); m[13] = -(t + b) / (t - b); m[14] = -(f + n) / (f - n);
+    return out;
+  }
+  static perspective(out, fovyDeg, aspect, n, f) {
+    out.identity();
+    const t = n * Math.tan(fovyDeg * Math.PI / 360), m = out.m;
+    m[0] = n / (aspect * t); m[5] = n / t; m[10] = -(f + n) / (f - n);
+    m[11] = -1; m[14] = -(2 * f * n) / (f - n); m[15] = 0;
+    return out;
+  }
+  static frustum(out, l, r, b, t, n, f) {
+    out.identity();
+    const m = out.m, rl = 1 / (r - l), tb = 1 / (t - b), fn = 1 / (f - n);
+    m[0] = 2 * n * rl; m[5] = 2 * n * tb; m[8] = (r + l) * rl;
+    m[9] = (t + b) * tb; m[10] = -(f + n) * fn; m[11] = -1;
+    m[14] = -2 * f * n * fn; m[15] = 0;
+    return out;
+  }
+}
+
+/** Per-target cache of one capability (enable/disable + parameters). */
+function makeCap() { return { enabled: false, dirty: true }; }
+
+class GlStateManager {
+  constructor(gl) {
+    this.gl = gl;
+    this.stats = { glCalls: 0, skippedByCache: 0 }; // perf counters for CI
+
+    // ---- texture units -------------------------------------------------
+    this._activeTextureUnit = 0;
+    this._texUnits = []; // {target: {enabled, bound, dirty}}
+    this._maxUnits = gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS) || 8;
+    for (let i = 0; i < this._maxUnits; i++)
+      this._texUnits.push({ [GL_CONST.TEXTURE_2D]: makeCap(), bound: null, dirtyBound: true });
+
+    // ---- state blocks (mirrors GlStateManager internal State classes) ---
+    this.color = { r: 1, g: 1, b: 1, a: 1, mask: [true, true, true, true], dirty: true };
+    this.blend = { ...makeCap(), srcRgb: GL_CONST.ONE, dstRgb: GL_CONST.ZERO,
+                   srcAlpha: GL_CONST.ONE, dstAlpha: GL_CONST.ZERO, modeRgb: GL_CONST.FUNC_ADD, modeAlpha: GL_CONST.FUNC_ADD };
+    this.depth = { ...makeCap(), func: GL_CONST.LESS, mask: true };
+    this.cull  = { ...makeCap(), mode: GL_CONST.BACK };
+    this._polygonOffset = { ...makeCap(), factor: 0, units: 0 };
+    this._scissor = { ...makeCap(), x: 0, y: 0, w: 0, h: 0 };
+    this.stencil = { ...makeCap(), func: GL_CONST.ALWAYS, ref: 0, mask: 0xFF, sfail: 0x1E00, zfail: 0x1E00, zpass: 0x1E00 };
+    this._logicOp = { ...makeCap(), op: GL_CONST.COPY };
+    this._viewport = { x: 0, y: 0, w: 0, h: 0, dirty: true };
+    this._lineWidth = { v: 1, dirty: true };
+
+    // ---- CPU matrix stacks (MODELVIEW / PROJECTION / TEXTURE) ----------
+    this._curMatrixMode = GL_CONST.MODELVIEW;
+    this._stacks = {
+      [GL_CONST.MODELVIEW]:   { cur: new Matrix4f(), stack: [], max: 32 },
+      [GL_CONST.PROJECTION]:  { cur: new Matrix4f(), stack: [], max: 8 },
+      [GL_CONST.TEXTURE]:     { cur: new Matrix4f(), stack: [], max: 8 },
+      [GL_CONST.COLOR]:       { cur: new Matrix4f(), stack: [], max: 2 }, // legacy no-op slot
+    };
+    this._uploadDirty = true; // MVP uniforms need re-upload after matrix ops
+
+    // ---- program / uniform cache ---------------------------------------
+    this._program = null;
+    this._uniformCache = new Map(); // program -> Map(name -> location)
+
+    // ---- VAO / FBO -------------------------------------------------------
+    this._vao = null; this._fbo = null; this._fboDirty = true;
+  }
+
+  _gl(fn, ...args) { this.stats.glCalls++; return this.gl[fn](...args); }
+
+  // ================= color =================================================
+  color4f(r, g, b, a) {
+    const c = this.color;
+    if (c.r !== r || c.g !== g || c.b !== b || c.a !== a) {
+      c.r = r; c.g = g; c.b = b; c.a = a; c.dirty = true;
+    } else this.stats.skippedByCache++;
+  }
+  colorMask(red, green, blue, alpha) {
+    const m = this.color.mask;
+    if (m[0] !== red || m[1] !== green || m[2] !== blue || m[3] !== alpha) {
+      m[0] = red; m[1] = green; m[2] = blue; m[3] = alpha; this.color.dirty = true;
+    } else this.stats.skippedByCache++;
+  }
+  /** Flush vertex-color + colorMask into GL before a draw call. */
+  _flushColor() {
+    const c = this.color;
+    if (c.dirty) {
+      this._gl('colorMask', c.mask[0], c.mask[1], c.mask[2], c.mask[3]);
+      c.dirty = false; // vertex color goes through a uniform in core shaders
+    }
+  }
+
+  // ================= blend =================================================
+  blendEnable()   { this._cap(this.blend, 'BLEND', true); }
+  blendDisable()  { this._cap(this.blend, 'BLEND', false); }
+  blendFunc(src, dst) { this.blendFuncSeparate(src, dst, src, dst); }
+  blendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha) {
+    const b = this.blend;
+    if (b.srcRgb !== srcRgb || b.dstRgb !== dstRgb || b.srcAlpha !== srcAlpha || b.dstAlpha !== dstAlpha) {
+      b.srcRgb = srcRgb; b.dstRgb = dstRgb; b.srcAlpha = srcAlpha; b.dstAlpha = dstAlpha; b.dirty = true;
+    } else this.stats.skippedByCache++;
+  }
+  blendFuncSeparateEXT(srcRgb, dstRgb, srcAlpha, dstAlpha, modeRgb, modeAlpha) {
+    this.blendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
+    const b = this.blend;
+    if (b.modeRgb !== modeRgb || b.modeAlpha !== modeAlpha) {
+      b.modeRgb = modeRgb; b.modeAlpha = modeAlpha; b.dirty = true;
+    }
+  }
+  _flushBlend() {
+    const b = this.blend;
+    if (b.dirty) {
+      if (b.enabled) this._gl('enable', this.gl.BLEND); else this._gl('disable', this.gl.BLEND);
+      this._gl('blendFuncSeparate', b.srcRgb, b.dstRgb, b.srcAlpha, b.dstAlpha);
+      this._gl('blendEquationSeparate', b.modeRgb, b.modeAlpha);
+      b.dirty = false;
+    }
+  }
+
+  // ================= depth =================================================
+  depthEnable()  { this._cap(this.depth, 'DEPTH_TEST', true); }
+  depthDisable() { this._cap(this.depth, 'DEPTH_TEST', false); }
+  depthFunc(fn)  { if (this.depth.func !== fn) { this.depth.func = fn; this.depth.dirty = true; } else this.stats.skippedByCache++; }
+  depthMask(on)  { if (this.depth.mask !== on) { this.depth.mask = on; this.depth.dirty = true; } else this.stats.skippedByCache++; }
+  _flushDepth() {
+    const d = this.depth;
+    if (d.dirty) {
+      if (d.enabled) this._gl('enable', this.gl.DEPTH_TEST); else this._gl('disable', this.gl.DEPTH_TEST);
+      this._gl('depthFunc', d.func); this._gl('depthMask', d.mask);
+      d.dirty = false;
+    }
+  }
+
+  // ================= cull ==================================================
+  cullEnable()  { this._cap(this.cull, 'CULL_FACE', true); }
+  cullDisable() { this._cap(this.cull, 'CULL_FACE', false); }
+  cullFace(mode) { if (this.cull.mode !== mode) { this.cull.mode = mode; this.cull.dirty = true; } }
+  _flushCull() {
+    const c = this.cull;
+    if (c.dirty) {
+      if (c.enabled) this._gl('enable', this.gl.CULL_FACE); else this._gl('disable', this.gl.CULL_FACE);
+      this._gl('cullFace', c.mode); c.dirty = false;
+    }
+  }
+
+  // ================= misc caps =============================================
+  _cap(obj, glName, on) {
+    if (obj.enabled !== on) { obj.enabled = on; obj.dirty = true; }
+    else this.stats.skippedByCache++;
+    obj._glName = glName;
+  }
+  polygonOffsetEnable()  { this._cap(this._polygonOffset, 'POLYGON_OFFSET_FILL', true); }
+  polygonOffsetDisable() { this._cap(this._polygonOffset, 'POLYGON_OFFSET_FILL', false); }
+  polygonOffset(factor, units) {
+    const p = this._polygonOffset;
+    if (p.factor !== factor || p.units !== units) { p.factor = factor; p.units = units; p.dirty = true; }
+  }
+  stencilEnable()  { this._cap(this.stencil, 'STENCIL_TEST', true); }
+  stencilDisable() { this._cap(this.stencil, 'STENCIL_TEST', false); }
+  stencilFunc(fn, ref, mask) {
+    const s = this.stencil;
+    if (s.func !== fn || s.ref !== ref || s.mask !== mask) { s.func = fn; s.ref = ref; s.mask = mask; s.dirty = true; }
+  }
+  stencilOp(sfail, zfail, zpass) {
+    const s = this.stencil;
+    if (s.sfail !== sfail || s.zfail !== zfail || s.zpass !== zpass) { s.sfail = sfail; s.zfail = zfail; s.zpass = zpass; s.dirty = true; }
+  }
+  logicOpEnable()  { this._cap(this._logicOp, 'COLOR_LOGIC_OP', true); }
+  logicOpDisable() { this._cap(this._logicOp, 'COLOR_LOGIC_OP', false); }
+  logicOp(op) { if (this._logicOp.op !== op) { this._logicOp.op = op; this._logicOp.dirty = true; } }
+
+  // ================= viewport / scissor / line =============================
+  viewport(x, y, w, h) {
+    const v = this._viewport;
+    if (v.x !== x || v.y !== y || v.w !== w || v.h !== h) { v.x = x; v.y = y; v.w = w; v.h = h; v.dirty = true; }
+    else this.stats.skippedByCache++;
+  }
+  _flushViewport() {
+    const v = this._viewport;
+    if (v.dirty) { this._gl('viewport', v.x, v.y, v.w, v.h); v.dirty = false; }
+  }
+  scissorEnable()  { this._cap(this._scissor, 'SCISSOR_TEST', true); }
+  scissorDisable() { this._cap(this._scissor, 'SCISSOR_TEST', false); }
+  scissor(x, y, w, h) {
+    const s = this._scissor;
+    if (s.x !== x || s.y !== y || s.w !== w || s.h !== h) { s.x = x; s.y = y; s.w = w; s.h = h; s.dirty = true; }
+  }
+  _flushScissor() {
+    const s = this._scissor;
+    if (s.dirty) {
+      if (s.enabled) this._gl('enable', this.gl.SCISSOR_TEST); else this._gl('disable', this.gl.SCISSOR_TEST);
+      if (s.enabled) this._gl('scissor', s.x, s.y, s.w, s.h);
+      s.dirty = false;
+    }
+  }
+  lineWidth(v) { if (this._lineWidth.v !== v) { this._lineWidth.v = v; this._lineWidth.dirty = true; } }
+
+  // ================= textures ==============================================
+  activeTexture(unit) {
+    if (this._activeTextureUnit !== unit) {
+      this._activeTextureUnit = unit;
+      this._gl('activeTexture', this.gl.TEXTURE0 + unit);
+    } else this.stats.skippedByCache++;
+  }
+  enableTexture2D() {
+    const u = this._texUnits[this._activeTextureUnit], t = u[GL_CONST.TEXTURE_2D];
+    this._cap(t, 'TEXTURE_2D', true);
+    // binding is the actual enablement in WebGL2; flush below
+    if (t.dirty) {
+      if (u.bound !== null) this._gl('bindTexture', this.gl.TEXTURE_2D, u.bound);
+      t.dirty = false;
+    }
+  }
+  disableTexture2D() {
+    const u = this._texUnits[this._activeTextureUnit], t = u[GL_CONST.TEXTURE_2D];
+    this._cap(t, 'TEXTURE_2D', false);
+    if (t.dirty) {
+      this._gl('bindTexture', this.gl.TEXTURE_2D, null);
+      t.dirty = false;
+    }
+  }
+  bindTexture(target, tex) {
+    const u = this._texUnits[this._activeTextureUnit];
+    if (u.bound !== tex || u.dirtyBound) {
+      u.bound = tex; u.dirtyBound = false;
+      this._gl('bindTexture', target, tex);
+    } else this.stats.skippedByCache++;
+  }
+  texParameter2D(target, pname, param) { this._gl('texParameteri', target, pname, param); }
+  uploadTexture2D(level, internalFormat, w, h, format, type, pixels) {
+    this._gl('texImage2D', this.gl.TEXTURE_2D, level, internalFormat, w, h, 0, format, type, pixels);
+  }
+
+  // ================= matrix stack (CPU-side) ===============================
+  matrixMode(mode) { this._curMatrixMode = mode; }
+  currentMatrixMode() { return this._curMatrixMode; }
+  pushMatrix() {
+    const s = this._stacks[this._curMatrixMode];
+    if (s.stack.length >= s.max) throw new Error('Matrix stack overflow: ' + this._modeName());
+    const copy = new Matrix4f(); copy.m.set(s.cur.m);
+    s.stack.push(copy); // GL semantics: push a copy, further ops mutate cur
+  }
+  popMatrix() {
+    const s = this._stacks[this._curMatrixMode];
+    if (!s.stack.length) throw new Error('Matrix stack underflow: ' + this._modeName());
+    s.cur = s.stack.pop(); this._uploadDirty = true;
+  }
+  loadIdentity() { this._stacks[this._curMatrixMode].cur.identity(); this._uploadDirty = true; }
+  loadMatrix(mat) { this._stacks[this._curMatrixMode].cur.m.set(mat.m || mat); this._uploadDirty = true; }
+  multMatrix(mat) { Matrix4f.mul(this._stacks[this._curMatrixMode].cur, this._stacks[this._curMatrixMode].cur, matOf(mat)); this._uploadDirty = true; }
+  translatef(x, y, z) { this._stacks[this._curMatrixMode].cur.translate(x, y, z); this._uploadDirty = true; }
+  scalef(x, y, z)     { this._stacks[this._curMatrixMode].cur.scale(x, y, z); this._uploadDirty = true; }
+  rotatef(deg, x, y, z) { this._stacks[this._curMatrixMode].cur.rotate(deg, x, y, z); this._uploadDirty = true; }
+  ortho(l, r, b, t, n, f) { Matrix4f.ortho(this._stacks[this._curMatrixMode].cur, l, r, b, t, n, f); this._uploadDirty = true; }
+  perspective(fovy, aspect, n, f) { Matrix4f.perspective(this._stacks[this._curMatrixMode].cur, fovy, aspect, n, f); this._uploadDirty = true; }
+  frustum(l, r, b, t, n, f) { Matrix4f.frustum(this._stacks[this._curMatrixMode].cur, l, r, b, t, n, f); this._uploadDirty = true; }
+  getMatrix(mode) { return this._stacks[mode || this._curMatrixMode].cur; }
+  _modeName() { return this._curMatrixMode === GL_CONST.MODELVIEW ? 'MODELVIEW' : this._curMatrixMode === GL_CONST.PROJECTION ? 'PROJECTION' : 'TEXTURE'; }
+
+  // ================= programs ==============================================
+  createProgram(vsSrc, fsSrc) {
+    const gl = this.gl;
+    const vs = this._compile(gl.VERTEX_SHADER, vsSrc);
+    const fs = this._compile(gl.FRAGMENT_SHADER, fsSrc);
+    const p = gl.createProgram();
+    gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS))
+      throw new Error('Program link failed: ' + gl.getProgramInfoLog(p));
+    return p;
+  }
+  _compile(type, src) {
+    const gl = this.gl, sh = gl.createShader(type);
+    gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+      throw new Error('Shader compile failed: ' + gl.getShaderInfoLog(sh) + '\n---src---\n' + src);
+    return sh;
+  }
+  useProgram(p) {
+    if (this._program !== p) { this._program = p; this._gl('useProgram', p); }
+    else this.stats.skippedByCache++;
+  }
+  /**
+   * Cached uniform lookup. Two call shapes:
+   *   uniformLocation(name)        — program must be set via useProgram() first
+   *                                  (mirrors MC's bind-then-query flow)
+   *   uniformLocation(prog, name)  — explicit program
+   * Fail-fast with a clear message instead of a cryptic WebGL TypeError.
+   */
+  uniformLocation(progOrName, maybeName) {
+    const prog = maybeName === undefined ? this._program : progOrName;
+    const name = maybeName === undefined ? progOrName : maybeName;
+    if (!prog) throw new Error('uniformLocation("' + name + '") called before useProgram() — bind the program first (MC RenderSystem semantics)');
+    let map = this._uniformCache.get(prog);
+    if (!map) { map = new Map(); this._uniformCache.set(prog, map); }
+    if (!map.has(name)) map.set(name, this.gl.getUniformLocation(prog, name));
+    return map.get(name);
+  }
+  uniformMatrix4fvMVP(modelViewLoc, projLoc) {
+    // dedup key MUST include the program: switching programs re-runs this with
+    // the SAME matrices, but uniformMatrix4fv targets the CURRENT program —
+    // skipping the upload would leave the new program's MVP uniforms at 0
+    // (every vertex collapses to the origin). Found by the v1.1 GUI demo.
+    // Keyed by OBJECT IDENTITY via Map — string-concatenating WebGLProgram
+    // objects yields '[object WebGLProgram]' for EVERY program, which would
+    // wrongly dedup across programs (second bug found by the same demo).
+    if (!this._mvpKeys) this._mvpKeys = new Map();
+    const sk = this._stackKey();
+    if (!this._uploadDirty && this._mvpKeys.get(this._program) === sk) return;
+    const gl = this.gl;
+    if (modelViewLoc) gl.uniformMatrix4fv(modelViewLoc, false, this.getMatrix(GL_CONST.MODELVIEW).m);
+    if (projLoc) gl.uniformMatrix4fv(projLoc, false, this.getMatrix(GL_CONST.PROJECTION).m);
+    this._mvpKeys.set(this._program, sk); this._uploadDirty = false;
+    this.stats.glCalls += 2;
+  }
+  _stackKey() {
+    // FULL 16-component key: partial keys (e.g. scale-only) miss translations,
+    // which lets a per-program dedup entry falsely match after translatef —
+    // the other program then keeps its stale MVP (found by v1.1 GUI demo).
+    const mv = this.getMatrix(GL_CONST.MODELVIEW).m, pj = this.getMatrix(GL_CONST.PROJECTION).m;
+    return Array.from(mv).join(',') + '|' + Array.from(pj).join(',');
+  }
+
+  // ================= VAO / FBO =============================================
+  bindVertexArray(vao) { if (this._vao !== vao) { this._vao = vao; this._gl('bindVertexArray', vao); } }
+  bindFramebuffer(target, fbo) {
+    if (target === this.gl.FRAMEBUFFER && this._fbo !== fbo) { this._fbo = fbo; this._fboDirty = true; }
+    this._gl('bindFramebuffer', target, fbo);
+  }
+  /** Legacy EXT_framebuffer_object mapping (GlStateManager._glGenFramebuffers era). */
+  extglGenFramebuffers()      { return this.gl.createFramebuffer(); }
+  extglFramebufferTexture2D(target, attachment, texTarget, tex, level) {
+    this.gl.framebufferTexture2D(target, attachment, texTarget, tex, level);
+  }
+
+  // ================= frame bookkeeping =====================================
+  /** Called once before MC renders: pushes all dirty state into GL. */
+  beginFrame(width, height) {
+    this.viewport(0, 0, width, height);
+    this._flushViewport();
+    this.clearColor4f(0, 0, 0, 0);
+    this.clearDepth(1.0);
+    this._gl('clear', this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+  }
+  clearColor4f(r, g, b, a) { this._gl('clearColor', r, g, b, a); }
+  clearDepth(d) { this._gl('clearDepth', d); }
+  /** Per-draw pre-flight: flush every dirty subsystem. Call before drawArrays/drawElements. */
+  applyAll() {
+    this._flushColor(); this._flushBlend(); this._flushDepth();
+    this._flushCull(); this._flushScissor();
+    const p = this._polygonOffset;
+    if (p.dirty) {
+      if (p.enabled) this._gl('enable', this.gl.POLYGON_OFFSET_FILL); else this._gl('disable', this.gl.POLYGON_OFFSET_FILL);
+      if (p.enabled) this._gl('polygonOffset', p.factor, p.units);
+      p.dirty = false;
+    }
+    const s = this.stencil;
+    if (s.dirty) {
+      if (s.enabled) this._gl('enable', this.gl.STENCIL_TEST); else this._gl('disable', this.gl.STENCIL_TEST);
+      if (s.enabled) {
+        this._gl('stencilFunc', s.func, s.ref, s.mask);
+        this._gl('stencilOp', s.sfail, s.zfail, s.zpass);
+      }
+      s.dirty = false;
+    }
+    const l = this._logicOp;
+    if (l.dirty) {
+      if (l.enabled) this._gl('enable', this.gl.COLOR_LOGIC_OP); else this._gl('disable', this.gl.COLOR_LOGIC_OP);
+      if (l.enabled) this._gl('logicOp', l.op);
+      l.dirty = false;
+    }
+    if (this._lineWidth.dirty) { this._gl('lineWidth', this._lineWidth.v); this._lineWidth.dirty = false; }
+  }
+  /** Reset to 1.16.5 GameRenderer's baseline (RenderSystem.endFrame analogue). */
+  resetBaseline() {
+    this.blendDisable(); this.depthDisable(); this.cullDisable();
+    this.scissorDisable(); this.polygonOffsetDisable(); this.stencilDisable();
+    this.logicOpDisable(); this.color4f(1, 1, 1, 1); this.depthMask(true);
+  }
+}
+
+function matOf(m) { return m instanceof Matrix4f ? m : Object.assign(new Matrix4f(), { m: Float32Array.from(m) }); }
+
+if (typeof module !== "undefined") module.exports = { GlStateManager, Matrix4f, GL_CONST };
+if (typeof window !== "undefined") { window.GlStateManager = GlStateManager; window.Matrix4f = Matrix4f; window.GL_CONST = GL_CONST; }
+
+})();
+</script>
+<script>
+/* ==== inlined from RenderTypeStates.js (IIFE-wrapped) ==== */
+(function(){
+/**
+ * TeaFabric M2 — RenderType state table (1.16.5 behavior-equivalent, own work).
+ * Maps the GL state each major vanilla RenderType expects, onto GlStateManager
+ * calls, so M3's chunk/entity/text renderers only call: apply('rendertype_solid').
+ * Values are derived from 1.16.5 public RenderType state documentation.
+ * Red line: contains zero Mojang code — pure declarative table written here.
+ */
+'use strict';
+// dual-environment import: Node (tests) / browser (live demo)
+const { GL_CONST } = (typeof require === 'function' && typeof window === 'undefined')
+  ? require('./GlStateManager.js')
+  : { GL_CONST: window.GL_CONST };
+
+const OFF = null;
+const B = (src, dst, srcA = src, dstA = dst) => ({ on: true, src, dst, srcA, dstA });
+
+/** GL state per render type. Blend semantics follow 1.16.5 RenderState definitions. */
+const RENDER_TYPES = {
+  rendertype_solid:        { blend: OFF, depth: { func: GL_CONST.LEQUAL, mask: true },  cull: GL_CONST.BACK,  colorMask: [true, true, true, true] },
+  rendertype_cutout:       { blend: OFF, depth: { func: GL_CONST.LEQUAL, mask: true },  cull: GL_CONST.BACK,  colorMask: [true, true, true, true] },
+  rendertype_cutout_mipped:{ blend: OFF, depth: { func: GL_CONST.LEQUAL, mask: true },  cull: GL_CONST.BACK,  colorMask: [true, true, true, true] },
+  rendertype_translucent:  { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: false }, cull: GL_CONST.BACK, colorMask: [true, true, true, true] },
+  rendertype_text:         { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: false }, cull: OFF, colorMask: [true, true, true, true] },
+  rendertype_text_see_through: { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.ALWAYS, mask: false }, cull: OFF, colorMask: [true, true, true, true] },
+  rendertype_lines:        { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: true },  cull: OFF, colorMask: [true, true, true, true], polygonOffset: { factor: -1, units: -1 } },
+  rendertype_eyes:         { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: true },  cull: OFF, colorMask: [true, true, true, true] },
+  rendertype_weather:      { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: true },  cull: OFF, colorMask: [true, true, true, true] },
+  rendertype_armor_glint:  { blend: B(GL_CONST.SRC_COLOR, GL_CONST.ONE, GL_CONST.ZERO, GL_CONST.ONE), depth: { func: GL_CONST.LEQUAL, mask: true }, cull: OFF, colorMask: [true, true, true, true] },
+  // GUI layer (1.16.5 draws GUIs without depth)
+  gui:                     { blend: OFF, depth: { func: GL_CONST.LEQUAL, mask: false },  cull: OFF, colorMask: [true, true, true, true] },
+  // GUI overlays (1.16.5: hovering tooltips, spectator widgets, boss bars drawn
+  // over the base GUI): blending on, never write depth.
+  gui_overlay:             { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.LEQUAL, mask: false }, cull: OFF, colorMask: [true, true, true, true] },
+  // Hover highlight (1.16.5 RenderType.text hover glow): must be visible even
+  // behind previously drawn elements -> ALWAYS test, no depth write.
+  gui_text_hover:          { blend: B(GL_CONST.SRC_ALPHA, GL_CONST.ONE_MINUS_SRC_ALPHA), depth: { func: GL_CONST.ALWAYS, mask: false }, cull: OFF, colorMask: [true, true, true, true] },
+};
+
+/** Apply a render type's state via GlStateManager (dedup handled there). */
+function applyRenderType(gsm, name) {
+  const st = RENDER_TYPES[name];
+  if (!st) throw new Error('unknown render type: ' + name);
+  if (st.blend) { gsm.blendEnable(); gsm.blendFuncSeparate(st.blend.src, st.blend.dst, st.blend.srcA, st.blend.dstA); }
+  else gsm.blendDisable();
+  gsm.depthEnable(); gsm.depthFunc(st.depth.func); gsm.depthMask(st.depth.mask);
+  if (st.cull) { gsm.cullEnable(); gsm.cullFace(st.cull); } else gsm.cullDisable();
+  if (st.polygonOffset) { gsm.polygonOffsetEnable(); gsm.polygonOffset(st.polygonOffset.factor, st.polygonOffset.units); }
+  else gsm.polygonOffsetDisable();
+  gsm.colorMask(...st.colorMask);
+  gsm.applyAll();
+  return st;
+}
+
+if (typeof module !== "undefined") module.exports = { RENDER_TYPES, applyRenderType };
+if (typeof window !== "undefined") { window.RENDER_TYPES = RENDER_TYPES; window.applyRenderType = applyRenderType; }
+
+})();
+</script>
+<script>
+(function(){
+'use strict';
+// ---------------- converter OUTPUT (ES 3.00) embedded verbatim ----------------
+const PROGRAMS = {"position":{"vs":"#version 300 es\n// TeaFabric M2 v1.1 — GUI fallback program: position (OWN source).\n// Fixed-pipeline equivalent of 1.16.5 PositionFormat: flat \"current color\"\n// quads (solid fills, window panes). Emulates glColor semantics with the\n// Color uniform, since WebGL2 has no fixed-function pipeline at all.\nin vec3 Position;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\nuniform vec4 Color;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 v1.1 — GUI fallback program: position (OWN source).\n// Fragments take the current-color uniform verbatim (glColor equivalent).\nuniform vec4 Color;\n\nvoid main() {\n    m2_fragColor = Color;\n}\n","attrs":["Position"]},"position_color":{"vs":"#version 300 es\n// TeaFabric M2 v1.1 — GUI fallback program: position_color (OWN source).\n// Fixed-pipeline equivalent of 1.16.5 PositionColorFormat: per-vertex color\n// (gradient fills, button backgrounds, borders). Vertex color is modulated\n// by ColorModulator, matching the M2 v1.0 uniform contract.\nin vec3 Position;\nin vec4 Color;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\n\nout vec4 vColor;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    vColor = Color;\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 v1.1 — GUI fallback program: position_color (OWN source).\n// Per-vertex color x ColorModulator. No texture, no fog (GUI family).\nuniform vec4 ColorModulator;\n\nin vec4 vColor;\n\nvoid main() {\n    m2_fragColor = vColor * ColorModulator;\n}\n","attrs":["Position","Color"]},"position_tex":{"vs":"#version 300 es\n// TeaFabric M2 v1.1 — GUI fallback program: position_tex (OWN source).\n// Fixed-pipeline equivalent of 1.16.5 PositionTexFormat and the GUI blit\n// path (AbstractGui.blit -> textured quad). WebGL2 has no fixed pipeline,\n// so texel x current color becomes texel x ColorModulator here — same\n// function, named contract kept from M2 v1.0.\nin vec3 Position;\nin vec2 UV0;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\n\nout vec2 uv0;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    uv0 = UV0;\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 v1.1 — GUI fallback program: position_tex (OWN source).\n// Texel x ColorModulator (fixed-pipe: texture * glColor). GUI family: no fog.\nuniform sampler2D Sampler0;\nuniform vec4 ColorModulator;\n\nin vec2 uv0;\n\nvoid main() {\n    vec4 texel = texture(Sampler0, uv0);\n    m2_fragColor = texel * ColorModulator;\n}\n","attrs":["Position","UV0"]},"position_tex_color":{"vs":"#version 300 es\n// TeaFabric M2 test sample — position_tex_color equivalent (OWN source).\n// Minimal GUI-style program: exercises pure varyings without imports.\nin vec3 Position;\nin vec2 UV0;\nin vec4 Color;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\n\nout vec2 uv0;\nout vec4 vColor;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    uv0 = UV0;\n    vColor = Color;\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 v1.1 — GUI fallback program: position_tex_color (OWN source).\n// v1.1 contract unification: adds ColorModulator so the whole GUI family\n// shares one global-tint hook (setShaderColor equivalent) without rebuilding\n// vertex buffers. Vertex color stays the primary modulator.\nuniform sampler2D Sampler0;\nuniform vec4 ColorModulator;\n\nin vec2 uv0;\nin vec4 vColor;\n\nvoid main() {\n    vec4 texel = texture(Sampler0, uv0);\n    m2_fragColor = texel * vColor * ColorModulator;\n}\n","attrs":["Position","UV0","Color"]},"position_tex_color_normal":{"vs":"#version 300 es\n// TeaFabric M2 v1.1 — GUI fallback program: position_tex_color_normal (OWN source).\n// Fixed-pipeline equivalent of 1.16.5 PositionTexColorNormalFormat.\n// Fixed-pipe GL_LIGHTING has no WebGL2 counterpart, so the normal participates\n// through our own documented headlight-lambert term: shade = a + (1-a)*max(dot(n, L), 0)\n// with L = view-space fixed light. Contract documented in TEST_REPORT.md.\nin vec3 Position;\nin vec2 UV0;\nin vec4 Color;\nin vec3 Normal;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\n\nout vec2 uv0;\nout vec4 vColor;\nout vec3 vNormal;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    uv0 = UV0;\n    vColor = Color;\n    // normal in view space (model-view rotation only, no projection)\n    vNormal = normalize((ModelViewMat * vec4(Normal, 0.0)).xyz);\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 v1.1 — GUI fallback program: position_tex_color_normal (OWN source).\n// texel x vertex color x headlight-lambert shade. GUI family: no fog, no lightmap.\nuniform sampler2D Sampler0;\nuniform vec4 ColorModulator;\n\nin vec2 uv0;\nin vec4 vColor;\nin vec3 vNormal;\n\nconst vec3 LIGHT_DIR = vec3(0.0, 0.0, 1.0); // headlight, view space\nconst float AMBIENT = 0.4;\n\nvoid main() {\n    vec4 texel = texture(Sampler0, uv0);\n    float shade = AMBIENT + (1.0 - AMBIENT) * max(dot(normalize(vNormal), LIGHT_DIR), 0.0);\n    m2_fragColor = texel * vColor * shade * ColorModulator;\n}\n","attrs":["Position","UV0","Color","Normal"]},"position_tex_lightmap_color":{"vs":"#version 300 es\n// TeaFabric M2 v1.1 — fixed-pipe fallback program: position_tex_lightmap_color (OWN source).\n// Fixed-pipeline equivalent of 1.16.5 PositionTexLightmapColorFormat — THE quad\n// format 1.16.5 uses for world faces and sign text. UV2 is the lightmap texel\n// coordinate (x16 scale, established in M2 v1.0 demo). Both textures sampled,\n// then vertex color x ColorModulator. This is the M3 chunk-fallback backbone.\nin vec3 Position;\nin vec2 UV0;\nin vec2 UV2;\nin vec4 Color;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\n\nout vec2 uv0;\nout vec2 uv2;\nout vec4 vColor;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    uv0 = UV0;\n    uv2 = UV2;\n    vColor = Color;\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 v1.1 — fixed-pipe fallback program: position_tex_lightmap_color (OWN source).\n// texel(Sampler0) x light(Sampler2) x vertex color x ColorModulator.\n// No fog uniforms here; M3's rendertype_solid already carries the fogged variant.\nuniform sampler2D Sampler0;\nuniform sampler2D Sampler2;\nuniform vec4 ColorModulator;\n\nin vec2 uv0;\nin vec2 uv2;\nin vec4 vColor;\n\nvoid main() {\n    vec4 texel = texture(Sampler0, uv0);\n    // v1.0 UV2 contract: texel coords x16 on a 256-wide lightmap sheet\n    vec4 light = texture(Sampler2, (uv2 + vec2(0.5)) / 256.0);\n    m2_fragColor = texel * light * vColor * ColorModulator;\n}\n","attrs":["Position","UV0","UV2","Color"]},"rendertype_solid":{"vs":"#version 300 es\n// TeaFabric M2 test sample — rendertype_solid equivalent (OWN source).\n// Structure mirrors the 1.16.5 solid-terrain program: position/uv/color/\n// lightmap attribs + directional lights + fog. Written from scratch.\n// [teafabric] begin inline <light.glsl>\n// TeaFabric M2 — light.glsl equivalent (OWN implementation, function\n// signatures follow the 1.16.5 core-shader call convention).\n// NOTE (ES 3.00): implicit int->float conversion is ILLEGAL in GLSL ES 3.00\n// (it was allowed in GLSL 1.50). All ivec2 lightmap coords are explicitly\n// cast — caught by the real-WebGL2 compile stage of CI.\nvec4 minecraft_mix_light(vec3 light0, vec3 light1, vec4 color) {\n    float l0 = max(0.0, dot(normalize(light0 + vec3(0.0, 0.001, 0.0)), vec3(0.0, 1.0, 0.0)));\n    float l1 = max(0.0, dot(normalize(light1 + vec3(0.0, 0.001, 0.0)), vec3(0.0, 1.0, 0.0)));\n    float lm = max(l0, l1);\n    return vec4(color.rgb * lm, color.a);\n}\n\nvec4 minecraft_mix_light_mid_block(vec3 light0, vec3 light1, vec3 midBlock, vec4 color) {\n    float lift = clamp(1.0 - length(midBlock) * 0.1, 0.75, 1.0);\n    return minecraft_mix_light(light0, light1, color) * vec4(lift, lift, lift, 1.0);\n}\n\nvec4 minecraft_sample_lightmap(sampler2D lightMap, ivec2 uv) {\n    return texture(lightMap, (vec2(uv) + vec2(0.5)) / 256.0);\n}\n\n// [teafabric] end inline <light.glsl>\n// [teafabric] begin inline <fog.glsl>\n// TeaFabric M2 — fog.glsl equivalent (OWN implementation, function\n// signatures follow the 1.16.5 core-shader call convention).\nvec4 minecraft_apply_fog(vec4 color, vec3 vertexDistance, float fogStart, float fogEnd, vec4 fogColor) {\n    float dist = length(vertexDistance);\n    float t = clamp((dist - fogStart) / (fogEnd - fogStart), 0.0, 1.0);\n    return vec4(mix(color.rgb, fogColor.rgb, t), color.a);\n}\n\n// [teafabric] end inline <fog.glsl>\n\nin vec3 Position;\nin vec2 UV0;\nin vec4 Color;\nin ivec2 UV2;\n\nuniform sampler2D Sampler0;\nuniform sampler2D Sampler2;\n\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\nuniform vec4 ColorModulator;\nuniform vec3 Light0_Direction;\nuniform vec3 Light1_Direction;\nuniform float FogStart;\nuniform float FogEnd;\nuniform vec4 FogColor;\n\nout vec4 vertexColor;\nout vec2 uv0;\nout vec4 lightMapColor;\nout vec3 vertexDistance;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n\n    vertexColor = minecraft_mix_light(Light0_Direction, Light1_Direction,\n                    minecraft_sample_lightmap(Sampler2, UV2) * Color) * ColorModulator;\n    uv0 = UV0;\n    vertexDistance = (ModelViewMat * vec4(Position, 1.0)).xyz;\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 test sample — rendertype_solid fragment (OWN source).\n// [teafabric] begin inline <fog.glsl>\n// TeaFabric M2 — fog.glsl equivalent (OWN implementation, function\n// signatures follow the 1.16.5 core-shader call convention).\nvec4 minecraft_apply_fog(vec4 color, vec3 vertexDistance, float fogStart, float fogEnd, vec4 fogColor) {\n    float dist = length(vertexDistance);\n    float t = clamp((dist - fogStart) / (fogEnd - fogStart), 0.0, 1.0);\n    return vec4(mix(color.rgb, fogColor.rgb, t), color.a);\n}\n\n// [teafabric] end inline <fog.glsl>\n\nuniform sampler2D Sampler0;\n\nin vec4 vertexColor;\nin vec2 uv0;\nin vec3 vertexDistance;\n\nuniform float FogStart;\nuniform float FogEnd;\nuniform vec4 FogColor;\n\nvoid main() {\n    vec4 texel = texture(Sampler0, uv0);\n    if (texel.a < 0.1) discard;\n    m2_fragColor = minecraft_apply_fog(texel * vertexColor, vertexDistance, FogStart, FogEnd, FogColor);\n}\n","attrs":["Position","UV0","Color","UV2"]},"rendertype_text":{"vs":"#version 300 es\n// TeaFabric M2 test sample — rendertype_text equivalent (OWN source).\n// Exercises: in in-conversion + alpha discard + uniform rounding.\nin vec3 Position;\nin vec2 UV0;\nin vec4 Color;\n\nuniform sampler2D Sampler0;\nuniform mat4 ModelViewMat;\nuniform mat4 ProjMat;\nuniform vec4 ColorModulator;\n\nout vec4 vertexColor;\nout vec2 uv0;\n\nvoid main() {\n    gl_Position = ProjMat * ModelViewMat * vec4(Position, 1.0);\n    vertexColor = Color * ColorModulator;\n    uv0 = UV0;\n}\n","fs":"#version 300 es\nprecision highp float;\nprecision highp int;\nlayout(location = 0) out vec4 m2_fragColor;\n// TeaFabric M2 test sample — rendertype_text fragment (OWN source).\n// Exercises: texture rename + m2_fragColor injection + alpha rounding.\nuniform sampler2D Sampler0;\n\nin vec4 vertexColor;\nin vec2 uv0;\n\nvoid main() {\n    vec4 texel = texture(Sampler0, uv0);\n    // glyph alpha rounds up so 1px outlines stay crisp at fractional scale\n    float a = floor(texel.a * vertexColor.a * 255.0 + 0.5) / 255.0;\n    if (a < 0.15) discard;\n    m2_fragColor = vec4(vertexColor.rgb, a);\n}\n","attrs":["Position","UV0","Color"]}};
+
+// ---------------- constants ----------------
+const gl = document.getElementById('cv').getContext('webgl2', {antialias:false});
+const G = window.GlStateManager, M4 = window.Matrix4f, C = window.GL_CONST;
+const gsm = new G(gl);
+const LW = 480, LH = 300; // logical GUI pixels (MC GUI scale 2 => canvas 960x600)
+const info = document.getElementById('info');
+
+if (!gl) { info.textContent = 'FATAL: no webgl2'; document.title='TF-GUI-DONE';
+  window.__GUI_RESULT = {fatal:'no webgl2'}; return; }
+
+// ---------------- program setup ----------------
+const progs = {};
+for (const [name, p] of Object.entries(PROGRAMS)) {
+  progs[name] = { prog: gsm.createProgram(p.vs, p.fs), attrs: p.attrs, uniforms: {} };
+}
+const U = (name, uni) => { gsm.uniformLocation(progs[name].prog, uni); progs[name].uniforms[uni] = gsm.uniformLocation(uni); };
+// NOTE: uniformLocation(name) queries for the CURRENT program (MC bind-then-query)
+function bindUniforms(name, list) {
+  gsm.useProgram(progs[name].prog);
+  for (const uni of list) progs[name].uniforms[uni] = gsm.uniformLocation(uni);
+}
+
+// ---------------- textures (procedural, zero MC assets) ----------------
+function texFromData(w, h, fill, wrap) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  const data = new Uint8Array(w*h*4);
+  fill(data, w, h);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+  const WM = wrap === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, WM);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, WM);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return t;
+}
+// dirt-ish 32x32 tiling tile
+const dirtTex = texFromData(32, 32, (d, w, h) => {
+  let s = 7;
+  const rnd = () => (s = (s*16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < w*h; i++) {
+    const x = i % w, y = (i / w) | 0;
+    const edge = (x===0||y===0||x===w-1||y===h-1) ? -18 : 0;
+    const n = (rnd()*26 - 13) + edge;
+    d[i*4]   = 110 + n; d[i*4+1] = 79 + n*0.8; d[i*4+2] = 50 + n*0.6; d[i*4+3] = 255;
+  }
+}, 'repeat');
+// stone 32x32
+const stoneTex = texFromData(32, 32, (d, w, h) => {
+  let s = 11;
+  const rnd = () => (s = (s*48271) % 2147483647) / 2147483647;
+  for (let i = 0; i < w*h; i++) {
+    const n = rnd()*22 - 11;
+    d[i*4] = 125 + n; d[i*4+1] = 125 + n; d[i*4+2] = 125 + n; d[i*4+3] = 255;
+  }
+});
+// white "logo" 64x16 with a notch pattern
+const logoTex = texFromData(64, 16, (d, w, h) => {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y*w + x)*4;
+    const on = (y > 1 && y < h-2 && (x % 8 < 6 || y % 4 === 2)) && !(x<6&&y<3) && !(x>w-7&&y>h-4);
+    d[i] = d[i+1] = d[i+2] = on ? 255 : 0; d[i+3] = on ? 255 : 0;
+  }
+});
+// 16x16 lightmap ramp
+const lightTex = texFromData(16, 16, (d, w, h) => {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y*w + x)*4;
+    const sky = 0.55 + 0.45*(1 - y/(h-1)), block = 0.6 + 0.4*(x/(w-1));
+    const b = Math.min(1, sky*block);
+    d[i] = d[i+1] = d[i+2] = b*255; d[i+3] = 255;
+  }
+});
+
+// ---------------- geometry helpers (8-float VO contract family) ----------------
+const vao = gl.createVertexArray();
+function drawQuad(program, floats, strideFloats, attribs) {
+  gl.bindVertexArray(vao);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(floats), gl.DYNAMIC_DRAW);
+  // clear stale enabled arrays from previous program layouts: an enabled
+  // attrib array whose buffer was deleted makes drawArrays fail with
+  // GL_INVALID_OPERATION and NOTHING renders (headless: silent!)
+  for (let i = 0; i < 8; i++) gl.disableVertexAttribArray(i);
+  let off = 0;
+  for (const [loc, size] of attribs) {
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, strideFloats*4, off*4);
+    off += size;
+  }
+  gl.drawArrays(gl.TRIANGLES, 0, floats.length / strideFloats);
+  gl.deleteBuffer(buf);
+}
+function attribLocs(program) {
+  return program.attrs.map(a => gl.getAttribLocation(program.prog, a));
+}
+// name->size contract per M2 vertex formats; locations are queried BY NAME
+// (GLSL compilers assign attrib locations in arbitrary order — pairing
+// sizes by declaration index silently corrupts the VO layout)
+const ATTR_SIZES = { Position: 3, UV0: 2, UV1: 2, UV2: 2, Color: 4, Normal: 3 };
+function attribsWithSizes(program) {
+  return program.attrs.map(a => {
+    const loc = gl.getAttribLocation(program.prog, a);
+    if (loc < 0) throw new Error('attrib not active: ' + a + ' in ' + (program.name || '?'));
+    if (!ATTR_SIZES[a]) throw new Error('no size contract for attrib: ' + a);
+    return [loc, ATTR_SIZES[a]];
+  });
+}
+function quad2f(x1,y1,x2,y2) { return [x1,y1,0, x2,y1,0, x2,y2,0, x1,y1,0, x2,y2,0, x1,y2,0]; }
+function pushQuad(arr, x1,y1,x2,y2, per) { // per = extra floats per vertex
+  const v = [x1,y1,0, x2,y1,0, x2,y2,0, x1,y1,0, x2,y2,0, x1,y2,0];
+  for (const p of v) arr.push(p);
+  return null;
+}
+function quadInterleaved(x1,y1,x2,y2, per, gen) {
+  // 6 verts: TL,BR-BL corner order matching quad2f winding
+  const corners = [[x1,y1],[x2,y1],[x2,y2],[x1,y1],[x2,y2],[x1,y2]];
+  const out = [];
+  for (const [x,y] of corners) { out.push(x, y, 0); out.push(...gen(x, y, per)); }
+  return out;
+}
+const uvTLBR = (x,y, box) => {
+  const [u1,v1,u2,v2] = box;
+  const fx = (x - box[4]) / (box[5] - box[4]), fy = (y - box[6]) / (box[7] - box[6]);
+  return [u1 + (u2-u1)*fx, v1 + (v2-v1)*fy];
+};
+
+// ---------------- draw calls (all through GlStateManager + presets) ----------------
+function drawFrame(t) {
+  gsm.beginFrame(960, 600);
+  applyRenderType(gsm, 'gui');
+
+  // PROJECTION: MC GUI ortho, top-left origin, Y down (v1.1 contract)
+  gsm.matrixMode(C.PROJECTION); gsm.loadIdentity();
+  gsm.ortho(0, LW, LH, 0, -1, 1);
+  gsm.matrixMode(C.MODELVIEW); gsm.loadIdentity();
+
+  // --- 1. background: dirt tiles via position_tex (REPEAT tiling = 1 draw) ---
+  bindUniforms('position_tex', ['ModelViewMat','ProjMat','ColorModulator','Sampler0']);
+  gsm.activeTexture(0); gsm.bindTexture(gl.TEXTURE_2D, dirtTex);
+  gl.uniform1i(progs['position_tex'].uniforms['Sampler0'], 0);
+  gl.uniform4f(progs['position_tex'].uniforms['ColorModulator'], 0.85, 0.85, 0.85, 1);
+  gsm.uniformMatrix4fvMVP(progs['position_tex'].uniforms['ModelViewMat'], progs['position_tex'].uniforms['ProjMat']);
+  const bgBox = [0,0, 16,16, 0, LW, 0, LH]; // uv 0..16 over screen => 32px logical tiles
+  drawQuad(progs['position_tex'], quadInterleaved(0,0,LW,LH, null, (x,y) => uvTLBR(x,y, bgBox)), 5,
+    attribsWithSizes(progs['position_tex']));
+
+  // --- 2. logo: position_tex_color, bobbing ---
+  bindUniforms('position_tex_color', ['ModelViewMat','ProjMat','ColorModulator','Sampler0']);
+  gl.uniform1i(progs['position_tex_color'].uniforms['Sampler0'], 0);
+  gl.uniform4f(progs['position_tex_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.bindTexture(gl.TEXTURE_2D, logoTex);
+  gsm.pushMatrix(); gsm.translatef(LW/2 - 96, 24 + Math.sin(t*0.002)*2.5, 0); // 192x24 centered-ish
+  gsm.uniformMatrix4fvMVP(progs['position_tex_color'].uniforms['ModelViewMat'], progs['position_tex_color'].uniforms['ProjMat']);
+  drawQuad(progs['position_tex_color'], quadInterleaved(0,0,192,24, null, (x, y) => [x/192, y/24, 1, 1, 1, 1]), 9,
+    attribsWithSizes(progs['position_tex_color']));
+  gsm.popMatrix();
+
+  // --- 3. three buttons: position_color per-vertex gradient + position border ---
+  bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  gl.uniform4f(progs['position_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.uniformMatrix4fvMVP(progs['position_color'].uniforms['ModelViewMat'], progs['position_color'].uniforms['ProjMat']);
+  const ac = attribsWithSizes(progs['position_color']);
+  for (let b = 0; b < 3; b++) {
+    const x1 = 90, x2 = 390, y1 = 100 + b*40, y2 = y1 + 28;
+    // gradient body (MC button gray -> darker bottom edge)
+    drawQuad(progs['position_color'], quadInterleaved(x1,y1,x2,y2, null, (x, y) => { const top = y < y1 + 14; return (b === 1 ? (top ? [0.62,0.68,0.72,1] : [0.42,0.47,0.52,1]) : (top ? [0.55,0.55,0.58,1] : [0.38,0.38,0.42,1])); }), 7,
+      ac);
+    // 1px hollow border via current-color program (position): 4 strips
+    bindUniforms('position', ['ModelViewMat','ProjMat','Color']);
+    gl.uniform4f(progs['position'].uniforms['Color'], 0.12, 0.12, 0.14, 1);
+    gsm.uniformMatrix4fvMVP(progs['position'].uniforms['ModelViewMat'], progs['position'].uniforms['ProjMat']);
+    const pc = attribsWithSizes(progs['position']);
+    const bd = 1;
+    for (const [ax1, ay1, ax2, ay2] of [
+      [x1-bd, y1-bd, x2+bd, y1],      // top
+      [x1-bd, y2,    x2+bd, y2+bd],   // bottom
+      [x1-bd, y1,    x1,    y2],      // left
+      [x2,    y1,    x2+bd, y2],      // right
+    ]) drawQuad(progs['position'], quadInterleaved(ax1,ay1,ax2,ay2, null, () => []), 3, pc);
+    bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  }
+
+  // --- 4. hover highlight on middle button: gui_text_hover ---
+  applyRenderType(gsm, 'gui_text_hover');
+  bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  gl.uniform4f(progs['position_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  const pulse = 0.22 + 0.12*Math.sin(t*0.004);
+  drawQuad(progs['position_color'], quadInterleaved(90,140,390,168, null, () => [0.9,0.95,1,pulse]), 7,
+    attribsWithSizes(progs['position_color']));
+
+  // --- 5. tooltip: gui_overlay dark panel + text bars ---
+  applyRenderType(gsm, 'gui_overlay');
+  bindUniforms('position_color', ['ModelViewMat','ProjMat','ColorModulator']);
+  gsm.uniformMatrix4fvMVP(progs['position_color'].uniforms['ModelViewMat'], progs['position_color'].uniforms['ProjMat']);
+  drawQuad(progs['position_color'], quadInterleaved(320,190,470,226, null, () => [0.06,0.06,0.1,0.92]), 7,
+    attribsWithSizes(progs['position_color']));
+  // "text" bars (purple-ish, like enchant text)
+  for (let r = 0; r < 3; r++) {
+    const y1 = 196 + r*10, w = 132 - r*28;
+    drawQuad(progs['position_color'], quadInterleaved(328,y1,328+w,y1+5, null, () => [0.68,0.5,0.9,1]), 7,
+      attribsWithSizes(progs['position_color']));
+  }
+
+  // --- 6. lightmap panel: position_tex_lightmap_color (right side) ---
+  applyRenderType(gsm, 'gui');
+  bindUniforms('position_tex_lightmap_color', ['ModelViewMat','ProjMat','ColorModulator','Sampler0','Sampler2']);
+  gsm.activeTexture(0); gsm.bindTexture(gl.TEXTURE_2D, stoneTex);
+  gl.uniform1i(progs['position_tex_lightmap_color'].uniforms['Sampler0'], 0);
+  gsm.activeTexture(2); gsm.bindTexture(gl.TEXTURE_2D, lightTex);
+  gl.uniform1i(progs['position_tex_lightmap_color'].uniforms['Sampler2'], 2);
+  gl.uniform4f(progs['position_tex_lightmap_color'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.uniformMatrix4fvMVP(progs['position_tex_lightmap_color'].uniforms['ModelViewMat'], progs['position_tex_lightmap_color'].uniforms['ProjMat']);
+  const lmc = attribsWithSizes(progs['position_tex_lightmap_color']);
+  const lmQuad = quadInterleaved(350,40,460,90, null, (x, y) => {
+    const u = (x - 350)/110, v = (y - 40)/50;
+    // UV2: texel coords x16 into the 256-wide lightmap sheet (v1.0 rule)
+    const u2 = (2 + u*8) * 16, v2 = (2 + (1-v)*8) * 16;
+    return [u, v, u2, v2, 0.95, 0.95, 0.95, 1];
+  });
+  drawQuad(progs['position_tex_lightmap_color'], lmQuad, 11, lmc);
+
+  // --- 7. normal-shaded mini cube: position_tex_color_normal ---
+  bindUniforms('position_tex_color_normal', ['ModelViewMat','ProjMat','ColorModulator','Sampler0']);
+  gsm.activeTexture(0); gsm.bindTexture(gl.TEXTURE_2D, stoneTex);
+  gl.uniform1i(progs['position_tex_color_normal'].uniforms['Sampler0'], 0);
+  gl.uniform4f(progs['position_tex_color_normal'].uniforms['ColorModulator'], 1, 1, 1, 1);
+  gsm.pushMatrix(); gsm.translatef(70, 210, 0); gsm.scalef(30, 30, 0.9); gsm.rotatef(-18, 1, 0, 0); gsm.rotatef(24, 0, 1, 0); // z squashed into ortho [-1,1]
+  gsm.uniformMatrix4fvMVP(progs['position_tex_color_normal'].uniforms['ModelViewMat'], progs['position_tex_color_normal'].uniforms['ProjMat']);
+  const nc = attribsWithSizes(progs['position_tex_color_normal']);
+  const S = 0.5, faces = [
+    // [corners(4), normal, uv box] front +top only for clarity
+    { c: [[-S,-S,S],[S,-S,S],[S,S,S],[-S,S,S]], n: [0,0,1], uv: [0,0,1,1] },
+    { c: [[-S,S,-S],[S,S,-S],[S,S,S],[-S,S,S]], n: [0,1,0], uv: [0,0,1,1] },
+  ];
+  for (const f of faces) {
+    const cs = [f.c[0], f.c[1], f.c[2], f.c[0], f.c[2], f.c[3]];
+    const uvs = [[f.uv[0],f.uv[3]],[f.uv[2],f.uv[3]],[f.uv[2],f.uv[1]],[f.uv[0],f.uv[3]],[f.uv[2],f.uv[1]],[f.uv[0],f.uv[1]]];
+    const out = [];
+    for (let i = 0; i < 6; i++) {
+      out.push(cs[i][0], cs[i][1], cs[i][2]);
+      out.push(uvs[i][0], uvs[i][1]);
+      out.push(0.9, 0.9, 0.9, 1);
+      out.push(f.n[0], f.n[1], f.n[2]);
+    }
+    drawQuad(progs['position_tex_color_normal'], out, 12, nc);
+  }
+  gsm.popMatrix();
+
+  applyRenderType(gsm, 'gui'); // settle back (dedup: near-zero calls)
+}
+
+// ---------------- frame loop + self-report ----------------
+let frames = 0, t0 = performance.now(), lastRaf = t0, fpsAvg = 0, glCallsPerFrame = 0;
+const statsAtStart = gsm.stats.glCalls;
+const DEBUG = /debug/.test(location.search);
+function loop(now) {
+  drawFrame(now);
+  frames++;
+  if (frames === 5) glCallsPerFrame = gsm.stats.glCalls - statsAtStart;
+  if (DEBUG && frames === 2) {
+    // freeze after frame 2 and dump ground truth
+    const gerr = gl.getError();
+    const pr = progs['position_color'].prog;
+    gl.useProgram(pr);
+    const pj = gl.getUniform(pr, gl.getUniformLocation(pr, 'ProjMat'));
+    const mv = gl.getUniform(pr, gl.getUniformLocation(pr, 'ModelViewMat'));
+    const cm = gl.getUniform(pr, gl.getUniformLocation(pr, 'ColorModulator'));
+    const b = new Uint8Array(4);
+    gl.readPixels(240, 599 - 228, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b); // button1 center logical (120,114)
+    // scan for grayish (stone-like) pixels: r≈g≈b and bright enough to not be dirt
+    const W = 960, H = 600, pxAll = new Uint8Array(W * H * 4);
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, pxAll);
+    let minX = 1e9, maxX = -1, minY = 1e9, maxY = -1, grayCount = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4, r = pxAll[i], g = pxAll[i+1], bl = pxAll[i+2];
+      if (Math.abs(r - g) < 12 && Math.abs(g - bl) < 12 && r > 70 && r < 200) {
+        grayCount++;
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+    window.__DEBUG = { gerr, grayCount, grayBox: {minX, maxX, minY, maxY},
+      pj: [...pj.slice(0, 6)], mv: [...mv.slice(12, 16)], cm: [...cm], pixel: [...b] };
+    info.textContent = 'DEBUG: ' + JSON.stringify(window.__DEBUG);
+    document.title = 'TF-GUI-DONE';
+    return;
+  }
+  if (DEBUG && frames === 1) {
+    // per-step error trace inside one frame: instrument drawQuad + applyRenderType
+    const errs = [];
+    const origDraw = drawQuad, origApply = applyRenderType;
+    // drawQuad is a function declaration in this scope — wrap via window hooks is complex;
+    // instead: trace after each numbered section by calling drawFrame stepwise is invasive.
+    // Simplest: record getError around each drawQuad call via monkey patch on gl.drawArrays:
+    const glCallsTrace = [];
+    const origDrawArrays = gl.drawArrays.bind(gl);
+    gl.drawArrays = function(...a) {
+      const e0 = gl.getError();
+      origDrawArrays(...a);
+      const e1 = gl.getError();
+      const st = gl.getParameter(gl.CURRENT_PROGRAM);
+      glCallsTrace.push({count: a[1], verts: a[2], errBefore: e0, err: e1,
+        progName: Object.keys(progs).find(k => progs[k].prog === st) || 'ext-' + (st ? st.__id || '?' : 'null')});
+    };
+    window.__TRACE = glCallsTrace;
+    drawFrame(now);
+    gl.drawArrays = origDrawArrays;
+    requestAnimationFrame(loop); // continue to the frame-2 freeze
+    return;
+  }
+  if (frames === 90) return report();
+  requestAnimationFrame(loop);
+}
+function px(lx, ly) { // read one logical pixel (device scale 2, y-flip for GL)
+  const dx = Math.min(959, lx*2), glY = Math.max(0, Math.min(599, 599 - ly*2));
+  const b = new Uint8Array(4);
+  gl.readPixels(dx, glY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
+  return [b[0], b[1], b[2], b[3]];
+}
+function nonBlack() {
+  const W = 960, H = 600, b = new Uint8Array(W*H*4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, b);
+  let nb = 0;
+  for (let i = 0; i < W*H; i++) if (b[i*4] + b[i*4+1] + b[i*4+2] > 24) nb++;
+  return nb / (W*H);
+}
+function report() {
+  // in-frame grid scan of the lightmap panel region (device coords)
+  const grid = [];
+  for (let y = 90; y <= 175; y += 28) {
+    const row = [];
+    for (let x = 710; x <= 910; x += 66) {
+      const b = new Uint8Array(4);
+      gl.readPixels(x, 599 - y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, b);
+      row.push(b[0] + ',' + b[1] + ',' + b[2]);
+    }
+    grid.push(row.join(' | '));
+  }
+  const regions = {
+    background_dirt: px(10, 300),
+    logo_area: px(240, 36),
+    button1_body: px(240, 114),
+    hover_overlay: px(240, 154),
+    tooltip_panel: px(465, 210),
+    lightmap_panel: px(405, 65),
+    cube_face: px(70, 208),
+  };
+  const result = {
+    frames: 90,
+    fpsAvg: Math.round(90 * 1000 / (performance.now() - t0)),
+    glCallsPerFrame,
+    dedupSkipped: gsm.stats.skippedByCache,
+    nonBlackRatio: Math.round(nonBlack()*1000)/1000,
+    regions,
+    webmcReady: true,
+  };
+  result.panelGrid = grid;
+  window.__GUI_RESULT = result;
+  // M2 loader-side webmcReady signal (contract with M6 smoke gate / StardustFox M4)
+  window.__M2_READY = true;
+  window.dispatchEvent(new CustomEvent('webmcReady', { detail: { webgl2: !!gl, gui: true, frames: 90 } }));
+  info.textContent = 'M2 v1.1 GUI bring-up\nframes: 90  fps: ' + result.fpsAvg +
+    '\nGL calls (first 5 frames): ' + glCallsPerFrame + '\ndedup skips: ' + gsm.stats.skippedByCache +
+    '\nnon-black: ' + (result.nonBlackRatio*100).toFixed(1) + '%' +
+    '\nwebmcReady dispatched ✓';
+  document.title = 'TF-GUI-DONE';
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
